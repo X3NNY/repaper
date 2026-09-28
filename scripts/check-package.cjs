@@ -55,7 +55,7 @@ function checkPackage() {
         cwd: fixture, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', REPAPER_ROOT: fixture },
         encoding: 'utf8', timeout: 30000, windowsHide: true
       })
-      if (result.error) throw result.error
+      if (result.error) throw new Error(`${result.error.message}\n${result.stdout || ''}\n${result.stderr || ''}`)
       assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
       return result.stdout
     }
@@ -73,7 +73,12 @@ function checkPackage() {
 
 Promise.resolve().then(() => process.argv[2] === '--native'
   ? checkNative(process.argv[3])
-  : checkPackage()).catch(error => {
+  : checkPackage()).then(() => {
+  // ConPTY can keep native worker handles alive after its shell has exited.
+  // The isolated probe is finished once both output and exit status pass.
+  if (process.argv[2] === '--native') process.exit(0)
+}).catch(error => {
   console.error(error)
   process.exitCode = 1
+  if (process.argv[2] === '--native') process.exit(1)
 })
