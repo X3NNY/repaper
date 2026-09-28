@@ -76,6 +76,10 @@ git push origin v0.1.1
 
 到 [Releases](https://github.com/X3NNY/repaper/releases) 打开草稿，确认各平台安装、应用启动、终端会话和写作功能，再编辑发布说明并点击 “Publish release”。构建与打包检查不替代各平台完整交互测试。
 
+如果四个平台的构建和检查都已通过，只有最终上传失败，可以修复发布脚本后，在主分支运行 **Publish existing release artifacts**，输入原版本标签和该标签的构建 Run ID。它会校验构建提交与标签一致、四个平台任务均成功，再复用同一次构建的产物创建草稿。当前 `package.json` 的版本必须仍与该标签一致，产物也必须尚未过期。该流程保持原标签不变，并拒绝覆盖已公开发布的 Release。
+
+AppImage 使用 `x86_64` 架构后缀，Linux tar.gz 使用 `x64`；发布脚本会按实际名称检查这两种产物。
+
 ## 签名与安装提示
 
 当前配置用于初期分发：Windows 未使用发行商证书；macOS 使用 ad-hoc 签名，尚未做 Apple notarization。Windows 可能出现 SmartScreen 提示；从网络下载的 macOS 应用可能被 Gatekeeper 阻止。

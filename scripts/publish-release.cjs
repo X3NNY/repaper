@@ -6,8 +6,8 @@ const { spawnSync } = require('node:child_process')
 const { version } = require('../package.json')
 
 const tag = `v${version}`
-assert.equal(process.env.GITHUB_REF_TYPE, 'tag', 'Releases require a tag build')
-assert.equal(process.env.GITHUB_REF_NAME, tag, 'Release tag must match package.json')
+const requestedTag = process.env.RELEASE_TAG || (process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : undefined)
+assert.equal(requestedTag, tag, 'Release tag must match package.json')
 const directory = resolve(__dirname, '../release-assets')
 const names = [
   `repaper-${version}-win-x64.exe`,
@@ -15,7 +15,7 @@ const names = [
   `repaper-${version}-mac-x64.zip`,
   `repaper-${version}-mac-arm64.dmg`,
   `repaper-${version}-mac-arm64.zip`,
-  `repaper-${version}-linux-x64.AppImage`,
+  `repaper-${version}-linux-x86_64.AppImage`,
   `repaper-${version}-linux-x64.tar.gz`
 ].sort()
 const found = readdirSync(directory).filter(name => /\.(exe|dmg|zip|AppImage|tar\.gz)$/.test(name)).sort()

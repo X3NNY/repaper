@@ -1,0 +1,47 @@
+name: Publish existing release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag, matching package.json (e.g. v0.1.0)'
+        required: true
+        type: string
+      run_id:
+        description: 'Completed tag build run ID with all four build jobs successful'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: desktop-release-refs/tags/${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Verify source commit and all platform checks
+        run: node scripts/check-release-run.cjs
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: repaper-*
+          path: release-assets
+          merge-multiple: true
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Create or update release draft
+        run: npm run release:draft

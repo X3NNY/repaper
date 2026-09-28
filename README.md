@@ -99,7 +99,7 @@ repaper status --json
 | **Windows x64** | `repaper-x.x.x-win-x64.exe` | NSIS 安装包 |
 | **macOS Intel** | `repaper-x.x.x-mac-x64.dmg` / `.zip` | Intel 版本 |
 | **macOS Apple Silicon** | `repaper-x.x.x-mac-arm64.dmg` / `.zip` | Apple Silicon 版本 |
-| **Linux x64** | `repaper-x.x.x-linux-x64.AppImage` / `.tar.gz` | AppImage 或解压运行 |
+| **Linux x64** | `repaper-x.x.x-linux-x86_64.AppImage` / `repaper-x.x.x-linux-x64.tar.gz` | AppImage 或解压运行 |
 
 当前 Windows 包未使用发行商证书，macOS 包采用 ad-hoc 签名，尚未 notarize。系统可能显示安装安全提示；详情见[签名与安装说明](docs/releases.md#签名与安装提示)。
 
