@@ -54,6 +54,16 @@ node-pty 1.1 使用 Node-API：Windows 和 macOS 使用包内预编译文件，L
 
 ## GitHub Actions
 
+### Pull request checks
+
+工作流 [ci.yml](../.github/workflows/ci.yml) 在创建或更新 PR、推送到 `main` 时自动运行，也支持手动触发。`Build and test` 检查使用 Node.js 22 安装锁定依赖、运行实验测试，再执行包含类型检查的应用构建。同一 PR 的新提交会取消旧检查。
+
+此工作流只使用读取权限，不读取发布密钥或创建 Release。文档 PR 也会运行，保证将 `Build and test` 配置为分支保护的必需检查时不会因跳过整个工作流而一直等待。可在 GitHub 仓库 Settings → Rules → Rulesets 中为 `main` 启用该必需检查。
+
+此基础 CI 不包含六个平台的原生安装包验证；打包验证由下述发布工作流完成。
+
+### Release builds
+
 工作流位于 [release.yml](../.github/workflows/release.yml)。
 
 - **手动运行主分支**：在 Actions 中选择 “Build desktop releases” → “Run workflow”。只生成 Actions artifacts，保留 14 天，适合预检。
