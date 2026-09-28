@@ -12,6 +12,7 @@ files:
   - out/preload/**/*
   - out/renderer/**/*
   - package.json
+  - LICENSE
 extraResources:
   - from: out/cli/repaper.cjs
     to: cli/repaper.cjs

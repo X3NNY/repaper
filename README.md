@@ -92,7 +92,7 @@ repaper status --json
 
 ### 1. 下载安装应用 (推荐)
 
-公开版本发布后，可前往 [👉 GitHub Releases](https://github.com/X3NNY/repaper/releases) 下载适合你系统的安装包。首次发布完成前，可以使用下方源码启动方式。
+当前可下载 [👉 v0.1.0 预发布版](https://github.com/X3NNY/repaper/releases/tag/v0.1.0)，或前往 [全部 Releases](https://github.com/X3NNY/repaper/releases) 查看其他版本。请按系统和 CPU 架构选择安装包，也可以使用下方源码启动方式。
 
 | 操作系统 | 下载文件 | 说明 |
 | --- | --- | --- |

@@ -11,7 +11,7 @@ re:paper 使用 electron-vite 编译代码、electron-builder 生成桌面安装
 | macOS | Apple Silicon arm64 | `.dmg` 和 `.zip` |
 | Linux | x64 | `.AppImage` 和 `.tar.gz` |
 
-每个 Release 草稿包含七个安装包或压缩包，以及 `SHA256SUMS.txt` 校验文件。CLI、Agent Skill 和 Electron 运行环境会随应用打包；Git、TeX、Codex / Claude Code 和实验环境由用户按需安装。
+每个 Release 草稿包含七个安装包或压缩包、`SHA256SUMS.txt` 校验文件和 MIT `LICENSE`。CLI、Agent Skill 和 Electron 运行环境会随应用打包；Git、TeX、Codex / Claude Code 和实验环境由用户按需安装。
 
 ## 本地打包
 

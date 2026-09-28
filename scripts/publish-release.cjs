@@ -38,5 +38,5 @@ if (existing.status === 0) {
   if (version.includes('-')) args.push('--prerelease')
   gh(args)
 }
-gh(['release', 'upload', tag, ...[...names, 'SHA256SUMS.txt'].map(name => join(directory, name)), '--clobber'])
+gh(['release', 'upload', tag, ...[...names, 'SHA256SUMS.txt'].map(name => join(directory, name)), resolve(__dirname, '../LICENSE'), '--clobber'])
 console.log(gh(['release', 'view', tag, '--json', 'url', '--jq', '.url']).stdout.trim())
