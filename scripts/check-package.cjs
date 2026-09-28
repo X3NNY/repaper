@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { existsSync, mkdtempSync, readFileSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { join, resolve } = require('node:path')
+const { dirname, join, resolve } = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 async function checkNative(modulePath) {
@@ -64,10 +64,13 @@ function checkPackage() {
     assert.equal(status.groups, 0)
     assert.equal(status.runs, 0)
     console.log('Packaged CLI initialized and read a local project')
-    console.log(run([__filename, '--native', join(resources, 'app.asar.unpacked', 'node_modules', 'node-pty')]).trim())
+    // Load through ASAR just like the main process. node-pty itself rewrites
+    // helper paths to app.asar.unpacked; passing that path directly doubles it.
+    console.log(run([__filename, '--native', join(resources, 'app.asar', 'node_modules', 'node-pty')]).trim())
   } finally {
     // fixture is exclusively created by mkdtempSync under the OS temp directory.
-    rmSync(fixture, { recursive: true, force: true })
+    assert.equal(dirname(resolve(fixture)), resolve(tmpdir()))
+    rmSync(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 }
 
