@@ -14,6 +14,11 @@ export interface ExperimentItem {
   groupKey: string
   key: string
   title: string
+  subtitle?: string
+  designReason?: string
+  keySettings?: ExperimentSetting[]
+  results?: ExperimentResultBlock[]
+  overview?: ExperimentOverview
   question: string
   description: string
   factor: string
@@ -24,7 +29,33 @@ export interface ExperimentItem {
   updatedAt: string
 }
 
-export type ExperimentRunStatus = 'running' | 'succeeded' | 'failed' | 'interrupted'
+export type ExperimentOverviewSection = 'subtitle' | 'design' | 'settings' | 'results' | 'conclusion'
+
+export interface ExperimentOverview {
+  schemaVersion: 1
+  revisionId: string
+  updatedAt: string
+  subtitle: string
+  designReason: string
+  keySettings: ExperimentSetting[]
+  results: ExperimentResultBlock[]
+  conclusion: string
+  changed: ExperimentOverviewSection[]
+}
+
+export type ExperimentOverviewDraft = Pick<ExperimentOverview, 'subtitle' | 'designReason' | 'keySettings' | 'results' | 'conclusion'>
+
+export interface ExperimentSetting {
+  label: string
+  value: string
+}
+
+export type ExperimentResultBlock =
+  | { type: 'text'; text: string; sourceRunIds?: string[] }
+  | { type: 'table'; title?: string; columns: string[]; rows: string[][]; sourceRunIds?: string[] }
+  | { type: 'figure'; title?: string; path: string; caption?: string; sourceRunIds?: string[] }
+
+export type ExperimentRunStatus = 'running' | 'succeeded' | 'failed' | 'interrupted' | 'imported'
 
 export interface ExperimentGitSnapshot {
   root: string
@@ -35,6 +66,8 @@ export interface ExperimentGitSnapshot {
 export interface ExperimentRun {
   id: string
   experimentId: string
+  label?: string
+  overviewRevisionId?: string
   status: ExperimentRunStatus
   command: string[]
   launcherPid: number
@@ -52,6 +85,7 @@ export interface ExperimentRun {
   logPath: string
   summary: string
   error: string
+  importedAt?: string
 }
 
 export interface ExperimentWorkspace {

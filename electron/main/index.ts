@@ -8,7 +8,7 @@ import { CodexBridge } from './codexBridge'
 import { ClaudeSessions } from './claudeSessions'
 import { SessionTerminalManager } from './sessionTerminal'
 import { WritingWorkspaceManager } from './writing'
-import { loadExperiments, readRunLog } from './experiments'
+import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog } from './experiments'
 import { ensureCliLauncher, installSkill, skillStatuses } from './skillInstaller'
 import type { SkillProvider } from '../../shared/experiments'
 
@@ -193,6 +193,10 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('experiments:log', async (_event, folderPath: string, runId: string) =>
     readRunLog(await requireFolder(folderPath), runId))
+  ipcMain.handle('experiments:figure', async (_event, folderPath: string, experimentId: string, path: string) =>
+    readExperimentFigure(await requireFolder(folderPath), experimentId, path))
+  ipcMain.handle('experiments:revisions', async (_event, folderPath: string, experimentId: string) =>
+    listOverviewRevisions(await requireFolder(folderPath), experimentId))
   ipcMain.handle('skills:statuses', skillStatuses)
   ipcMain.handle('skills:install', (_event, provider: SkillProvider) => installSkill(provider))
   createWindow()

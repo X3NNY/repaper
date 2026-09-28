@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
+import { constants } from 'node:fs'
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type {
   LatexEngine, WritingChange, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
@@ -11,6 +12,8 @@ import type {
 const execFileAsync = promisify(execFile)
 const editableExtensions = new Set(['.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml'])
 const dependencyExtensions = new Set(['.bib', '.bst', '.sty', '.cls', '.bbx', '.cbx'])
+const importExtensions = new Set(['.tex', '.bib', '.sty', '.cls', '.bst', '.bbx', '.cbx', '.tikz', '.pgf', '.png', '.jpg', '.jpeg', '.pdf', '.eps', '.svg', '.csv', '.dat', '.txt'])
+const importIgnoredDirectories = new Set(['.git', '.paper', '.repaper', '.build', 'node_modules', '.venv', '__pycache__'])
 const maxTextBytes = 5 * 1024 * 1024
 const maxPdfBytes = 50 * 1024 * 1024
 const maxLogBytes = 256 * 1024
@@ -256,6 +259,69 @@ export class WritingWorkspaceManager {
     for (const [name, content] of Object.entries(templateFiles(template))) {
       await writeFile(join(root, name), content, { encoding: 'utf8', flag: 'wx' })
     }
+    return this.getState(folderPath)
+  }
+
+  async importSource(folderPath: string, mainFile: string): Promise<WritingWorkspace> {
+    const project = await realpath(folderPath)
+    const main = await realpath(mainFile)
+    const sourceRelative = relative(project, main)
+    if (!sourceRelative || sourceRelative === '..' || sourceRelative.startsWith(`..${sep}`) || isAbsolute(sourceRelative) || sourceRelative.split(sep).some((segment) => segment.toLowerCase() === '.paper')) {
+      throw new Error('LaTeX 主文件必须位于论文工作目录内、.paper/ 外。')
+    }
+    if (extname(main).toLowerCase() !== '.tex' || !(await stat(main)).isFile()) throw new Error('请选择一个 LaTeX 主文件。')
+    const root = rootFor(folderPath)
+    const existing = await existingRoot(folderPath)
+    if (existing && (await readdir(root)).some((name) => name !== '.git' && name !== '.build')) {
+      throw new Error('写作目录已有文件，请直接使用或先手动整理。')
+    }
+    await command('git', ['--version'], folderPath, 10_000)
+
+    const sourceDirectory = dirname(main)
+    const files: { source: string; path: string; size: number }[] = []
+    let totalBytes = 0
+    const collect = async (directory: string, prefix = '', depth = 0): Promise<void> => {
+      if (depth > 12) throw new Error('LaTeX 源目录层级过深，请选择更小的源目录。')
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isSymbolicLink()) {
+          if (!extname(entry.name) || importExtensions.has(extname(entry.name).toLowerCase())) {
+            throw new Error(`LaTeX 源目录引用了符号链接，请先整理源文件：${join(prefix, entry.name)}`)
+          }
+          continue
+        }
+        if (entry.isDirectory()) {
+          if (!importIgnoredDirectories.has(entry.name)) await collect(join(directory, entry.name), join(prefix, entry.name), depth + 1)
+        } else if (entry.isFile() && importExtensions.has(extname(entry.name).toLowerCase())) {
+          const source = join(directory, entry.name)
+          const path = join(prefix, entry.name)
+          const size = (await stat(source)).size
+          files.push({ source, path, size })
+          totalBytes += size
+          if (files.length > 2000 || totalBytes > 250 * 1024 * 1024) {
+            throw new Error('LaTeX 源目录过大，请选择更小的源目录。')
+          }
+        }
+      }
+    }
+    await collect(sourceDirectory)
+    if (!files.some((file) => file.source === main)) throw new Error('未找到所选 LaTeX 主文件。')
+    if (files.some((file) => file.path === 'manuscript.tex' && file.source !== main)) {
+      throw new Error('源目录中已有另一份 manuscript.tex，请先确定要采用的版本。')
+    }
+    for (const file of files) {
+      if (await statOrNull(join(root, file.path))) throw new Error(`写作目录中已有同名文件：${file.path}`)
+    }
+    if (await statOrNull(join(root, 'manuscript.tex'))) throw new Error('写作目录中已有 manuscript.tex。')
+    await mkdir(root, { recursive: true })
+    for (const file of files) {
+      const target = join(root, file.path)
+      await mkdir(dirname(target), { recursive: true })
+      await copyFile(file.source, target, constants.COPYFILE_EXCL)
+    }
+    if (main !== join(sourceDirectory, 'manuscript.tex')) {
+      await copyFile(main, join(root, 'manuscript.tex'), constants.COPYFILE_EXCL)
+    }
+    await initGit(root)
     return this.getState(folderPath)
   }
 

@@ -3,7 +3,7 @@ import type { WorkspaceData } from '../../shared/model'
 import type { CodexThreadPage } from '../../shared/codex'
 import type { SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingTemplate, WritingWorkspace } from '../../shared/writing'
-import type { ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
+import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -48,6 +48,8 @@ const paperApi = {
   writingOpenPdfFolder: (folderPath: string): Promise<void> => ipcRenderer.invoke('writing:open-pdf-folder', folderPath),
   experimentsGet: (folderPath: string): Promise<ExperimentWorkspace> => ipcRenderer.invoke('experiments:get', folderPath),
   experimentsLog: (folderPath: string, runId: string): Promise<string> => ipcRenderer.invoke('experiments:log', folderPath, runId),
+  experimentsFigure: (folderPath: string, experimentId: string, path: string): Promise<string> => ipcRenderer.invoke('experiments:figure', folderPath, experimentId, path),
+  experimentsRevisions: (folderPath: string, experimentId: string): Promise<ExperimentOverview[]> => ipcRenderer.invoke('experiments:revisions', folderPath, experimentId),
   onExperimentsChanged: (callback: (folderPath: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, folderPath: string) => callback(folderPath)
     ipcRenderer.on('experiments:changed', listener)

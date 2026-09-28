@@ -18,6 +18,8 @@ extraResources:
     to: cli/repaper.cjs
   - from: skills/repaper-experiments/SKILL.md
     to: skills/repaper-experiments/SKILL.md
+  - from: skills/repaper-init/SKILL.md
+    to: skills/repaper-init/SKILL.md
   - from: build/icons/repaper.png
     to: icons/repaper.png
 # node-pty 1.1 uses Node-API. Its npm install script supplies native binaries

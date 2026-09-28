@@ -52,11 +52,13 @@ function checkPackage() {
   }
   const cli = join(resources, 'cli', 'repaper.cjs')
   const skill = join(resources, 'skills', 'repaper-experiments', 'SKILL.md')
+  const initSkill = join(resources, 'skills', 'repaper-init', 'SKILL.md')
   const icon = join(resources, 'icons', 'repaper.png')
-  for (const file of [executable, cli, skill, icon, join(resources, 'app.asar')]) {
+  for (const file of [executable, cli, skill, initSkill, icon, join(resources, 'app.asar')]) {
     assert.ok(existsSync(file), `Missing packaged resource: ${file}`)
   }
   assert.match(readFileSync(skill, 'utf8'), /name: repaper-experiments/)
+  assert.match(readFileSync(initSkill, 'utf8'), /name: repaper-init/)
   const fixture = mkdtempSync(join(tmpdir(), 'repaper package-'))
   try {
     const run = args => {

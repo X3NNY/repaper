@@ -49,7 +49,7 @@ export default function SettingsPanel({ toolbarTarget }: { toolbarTarget: HTMLDi
     <div className="global-settings">
     <header className="global-settings-heading"><span className="eyebrow">WORKSPACE SETTINGS</span><h1>设置</h1><p>这里的 Agent 配置对所有论文项目生效。</p></header>
     <section className="global-settings-section">
-      <div className="global-settings-section-head"><div><div className="global-settings-section-icon"><Settings2 size={20} /></div><h2>实验记录 SKILL</h2><p>让 Codex 和 Claude Code 使用 re:paper 命令维护实验组、实验和运行记录。</p></div></div>
+      <div className="global-settings-section-head"><div><div className="global-settings-section-icon"><Settings2 size={20} /></div><h2>项目初始化与实验记录 SKILL</h2><p>让 Codex 和 Claude Code 接入已有研究目录，并维护实验组、实验和运行记录。</p></div></div>
       {error ? <div className="global-settings-error"><CircleAlert size={15} />{error}</div> : null}
       <div className="global-settings-list">{providers.map(({ id, title, initial }) => {
         const item = statuses.find((status) => status.provider === id)
@@ -64,7 +64,7 @@ export default function SettingsPanel({ toolbarTarget }: { toolbarTarget: HTMLDi
           <button className={`button ${disabled ? 'button-light' : 'button-primary'}`} disabled={disabled} onClick={() => void install(id)}>{installing === id ? <LoaderCircle size={15} className="spin" /> : item?.state === 'current' ? <Check size={15} /> : null}{installing === id ? '安装中…' : action}</button>
         </div>
       })}</div>
-      <div className="global-settings-note">安装或更新一次即可用于所有论文。新建或重启 Agent 会话后会加载新的 SKILL。</div>
+      <div className="global-settings-note">安装或更新会同时提供 repaper-init 与 repaper-experiments，适用于所有论文。新建或重启 Agent 会话后会加载新的 SKILL。</div>
     </section>
     </div>
   </>

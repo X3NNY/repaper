@@ -5,11 +5,11 @@ import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import type { SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 
-const SKILL_NAME = 'repaper-experiments'
+const SKILL_NAMES = ['repaper-experiments', 'repaper-init'] as const
 
 const applicationRoot = resolve(__dirname, '../..')
-function sourceSkillPath(): string {
-  return join(app.isPackaged ? process.resourcesPath : applicationRoot, 'skills', SKILL_NAME, 'SKILL.md')
+function sourceSkillPath(name: string): string {
+  return join(app.isPackaged ? process.resourcesPath : applicationRoot, 'skills', name, 'SKILL.md')
 }
 function sourceCliPath(): string {
   return app.isPackaged
@@ -17,11 +17,11 @@ function sourceCliPath(): string {
     : join(applicationRoot, 'out', 'cli', 'repaper.cjs')
 }
 
-function destination(provider: SkillProvider): string {
+function destination(provider: SkillProvider, name: string): string {
   const base = provider === 'codex'
     ? process.env.CODEX_HOME || join(homedir(), '.codex')
     : process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
-  return join(base, 'skills', SKILL_NAME)
+  return join(base, 'skills', name)
 }
 
 function versionOf(source: string): string | null {
@@ -40,27 +40,37 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-async function sourceFiles(): Promise<{ skill: Buffer; cli: Buffer; version: string }> {
-  const [skill, cli] = await Promise.all([readFile(sourceSkillPath()), readFile(sourceCliPath())])
-  const version = versionOf(skill.toString('utf8'))
-  if (!version) throw new Error('内置 SKILL 缺少有效版本号。')
-  return { skill, cli, version }
+async function sourceFiles(): Promise<{ skills: { name: string; skill: Buffer }[]; cli: Buffer; version: string }> {
+  const [skills, cli] = await Promise.all([
+    Promise.all(SKILL_NAMES.map(async (name) => ({ name, skill: await readFile(sourceSkillPath(name)) }))),
+    readFile(sourceCliPath())
+  ])
+  const versions = skills.map(({ skill }) => versionOf(skill.toString('utf8')))
+  if (!versions[0] || versions.some((version) => version !== versions[0])) throw new Error('内置 SKILL 缺少有效版本号或版本不一致。')
+  return { skills, cli, version: versions[0] }
 }
 
 export async function skillStatuses(): Promise<SkillInstallStatus[]> {
   const source = await sourceFiles()
   return Promise.all((['codex', 'claude'] as const).map(async (provider) => {
-    const path = destination(provider)
-    const installedSkill = await readFile(join(path, 'SKILL.md')).catch((error: NodeJS.ErrnoException) => {
+    const path = destination(provider, SKILL_NAMES[0])
+    const installed = await Promise.all(source.skills.map(async ({ name }) => readFile(join(destination(provider, name), 'SKILL.md')).catch((error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return null
       throw error
-    })
-    if (!installedSkill) return { provider, path, state: 'missing', installedVersion: null, availableVersion: source.version }
-    const installedVersion = versionOf(installedSkill.toString('utf8'))
+    })))
+    const installedVersion = installed[0] ? versionOf(installed[0].toString('utf8')) : null
     const installedCli = await readFile(join(path, 'scripts', 'repaper.cjs')).catch(() => null)
-    const current = installedVersion === source.version && hash(installedSkill) === hash(source.skill) && Boolean(installedCli && hash(installedCli) === hash(source.cli))
+    const current = source.skills.every(({ skill }, index) => {
+      const local = installed[index]
+      return local !== null && versionOf(local.toString('utf8')) === source.version && hash(local) === hash(skill)
+    })
+      && Boolean(installedCli && hash(installedCli) === hash(source.cli))
+    const newer = installed.some((skill) => {
+      const version = skill && versionOf(skill.toString('utf8'))
+      return version !== null && compareVersions(version, source.version) > 0
+    })
     return {
-      provider, path, state: !installedVersion ? 'unknown' : compareVersions(installedVersion, source.version) > 0 ? 'newer' : current ? 'current' : 'outdated',
+      provider, path, state: !installed[0] ? 'missing' : newer ? 'newer' : !installedVersion ? 'unknown' : current ? 'current' : 'outdated',
       installedVersion, availableVersion: source.version
     }
   }))
@@ -69,24 +79,29 @@ export async function skillStatuses(): Promise<SkillInstallStatus[]> {
 export async function installSkill(provider: SkillProvider): Promise<SkillInstallStatus[]> {
   if (provider !== 'codex' && provider !== 'claude') throw new Error('未知的 Agent。')
   const source = await sourceFiles()
-  const path = destination(provider)
-  await mkdir(join(path, 'scripts'), { recursive: true })
-  const current = await readFile(join(path, 'SKILL.md')).catch(() => null)
-  const installedVersion = current && versionOf(current.toString('utf8'))
-  if (installedVersion && compareVersions(installedVersion, source.version) > 0) {
-    throw new Error(`已安装 v${installedVersion}，高于内置 v${source.version}。`)
+  const path = destination(provider, SKILL_NAMES[0])
+  const installed = await Promise.all(source.skills.map(async ({ name }) => {
+    const skillPath = destination(provider, name)
+    return { path: skillPath, current: await readFile(join(skillPath, 'SKILL.md')).catch(() => null) }
+  }))
+  for (const { current } of installed) {
+    const version = current && versionOf(current.toString('utf8'))
+    if (version && compareVersions(version, source.version) > 0) throw new Error(`已安装 v${version}，高于内置 v${source.version}。`)
   }
-  if (current && hash(current) !== hash(source.skill)) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    await copyFile(join(path, 'SKILL.md'), join(path, `SKILL.md.backup-${timestamp}`))
+  await mkdir(join(path, 'scripts'), { recursive: true })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  for (const [index, { path: skillPath, current }] of installed.entries()) {
+    await mkdir(skillPath, { recursive: true })
+    if (current && hash(current) !== hash(source.skills[index].skill)) {
+      await copyFile(join(skillPath, 'SKILL.md'), join(skillPath, `SKILL.md.backup-${timestamp}`))
+    }
   }
   const currentCli = await readFile(join(path, 'scripts', 'repaper.cjs')).catch(() => null)
   if (currentCli && hash(currentCli) !== hash(source.cli)) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
     await copyFile(join(path, 'scripts', 'repaper.cjs'), join(path, 'scripts', `repaper.cjs.backup-${timestamp}`))
   }
   await Promise.all([
-    writeFile(join(path, 'SKILL.md'), source.skill),
+    ...source.skills.map(({ name, skill }) => writeFile(join(destination(provider, name), 'SKILL.md'), skill)),
     writeFile(join(path, 'scripts', 'repaper.cjs'), source.cli)
   ])
   return skillStatuses()

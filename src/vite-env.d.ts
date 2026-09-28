@@ -4,7 +4,7 @@ import type { WorkspaceData } from '../shared/model'
 import type { CodexThreadPage } from '../shared/codex'
 import type { SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../shared/sessions'
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingTemplate, WritingWorkspace } from '../shared/writing'
-import type { ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
+import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 
 declare global {
   interface Window {
@@ -41,6 +41,8 @@ declare global {
       writingOpenPdfFolder: (folderPath: string) => Promise<void>
       experimentsGet: (folderPath: string) => Promise<ExperimentWorkspace>
       experimentsLog: (folderPath: string, runId: string) => Promise<string>
+      experimentsFigure: (folderPath: string, experimentId: string, path: string) => Promise<string>
+      experimentsRevisions: (folderPath: string, experimentId: string) => Promise<ExperimentOverview[]>
       onExperimentsChanged: (callback: (folderPath: string) => void) => () => void
       skillStatuses: () => Promise<SkillInstallStatus[]>
       skillInstall: (provider: SkillProvider) => Promise<SkillInstallStatus[]>
