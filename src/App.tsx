@@ -9,6 +9,7 @@ import type {
   Implementation, Paper, PaperStatus, ResearchRoute, Revision, Submission,
   WorkspaceData
 } from '../shared/model'
+import type { SessionProvider } from '../shared/sessions'
 import EditorDialog, { type DialogState } from './components/EditorDialog'
 import SessionsPanel from './components/SessionsPanel'
 import WritingPanel from './components/WritingPanel'
@@ -123,6 +124,7 @@ export default function App() {
   }, [view.kind, view.kind === 'paper' ? view.id : null, tab])
 
   const papers = workspace?.papers ?? []
+  const defaultAgent: SessionProvider = workspace?.defaultAgent === 'claude' ? 'claude' : 'codex'
   const sortedPapers = mostRecentPaper(papers)
   const selectedPaper = view.kind === 'paper' ? papers.find((paper) => paper.id === view.id) : undefined
   const paperFolderName = selectedPaper?.folderPath?.split(/[\\/]/).filter(Boolean).at(-1)
@@ -308,9 +310,9 @@ export default function App() {
           {view.kind === 'library' ? (
             <Library papers={sortedPapers} query={query} filter={filter} onFilter={setFilter} onCreate={() => setDialog({ kind: 'paper' })} onOpen={showPaper} onSample={addSample} />
           ) : null}
-          {view.kind === 'settings' ? <SettingsPanel toolbarTarget={toolbarTarget} /> : null}
+          {view.kind === 'settings' ? <SettingsPanel toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} onDefaultAgentChange={(provider) => setWorkspace((current) => current && ({ ...current, defaultAgent: provider }))} /> : null}
           {view.kind === 'paper' && selectedPaper ? (
-            <PaperDetail paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} />
+            <PaperDetail paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} />
           ) : null}
           {view.kind === 'paper' && !selectedPaper ? <EmptySection icon={<FileText size={26} />} title="找不到这篇论文" description="它可能已经被删除。" action={<button className="button button-primary" onClick={showLibrary}>返回全部论文</button>} /> : null}
         </div>
@@ -388,13 +390,13 @@ function Library({ papers, query, filter, onFilter, onCreate, onOpen, onSample }
   </>
 }
 
-function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget }: {
+function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget, defaultAgent }: {
   paper: Paper; tab: PaperTab; onTab: (tab: PaperTab) => void;
-  onEdit: () => void; onDelete: () => void; toolbarTarget: HTMLDivElement | null
+  onEdit: () => void; onDelete: () => void; toolbarTarget: HTMLDivElement | null; defaultAgent: SessionProvider
 }) {
   return <>
     {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
-    {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
+    {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} /> : null}
     {tab === 'writing' ? <WritingPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
     {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
     {tab === 'overview' ? <PaperOverview paper={paper} onTab={onTab} /> : null}

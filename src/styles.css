@@ -92,6 +92,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .topbar-context-copy small { overflow: hidden; color: #91a093; font-size: 10px; text-overflow: ellipsis; }
 .topbar-right, .topbar-page-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .topbar-right .button { min-height: 34px; padding: 0 11px; font-size: 11px; }
+.session-new-control { position: relative; display: inline-flex; border-radius: 7px; box-shadow: 0 7px 16px #1e5c491f; -webkit-app-region: no-drag; }
+.session-new-control .button { min-height: 34px; box-shadow: none; }
+.session-new-control .button:hover { transform: none; }
+.session-new-main.button { border-radius: 7px 0 0 7px; }
+.session-new-arrow.button { width: 30px; padding: 0; border-left: 1px solid #ffffff40; border-radius: 0 7px 7px 0; }
+.session-new-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 30; min-width: 190px; padding: 5px; border: 1px solid #dce8dc; border-radius: 7px; background: #fff; box-shadow: 0 12px 30px #203c2b26; -webkit-app-region: no-drag; }
+.session-new-menu button { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 35px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: #405f4a; text-align: left; font-size: 11px; }
+.session-new-menu button:hover { background: #eff6ec; }
+.session-new-menu button > span { flex: 1; }
+.session-new-menu small { color: #88a28c; font-size: 10px; }
 .topbar-icon-button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #dfe9dc; border-radius: 7px; background: #f7faf6; color: #5d8068; }
 .topbar-icon-button:hover { background: #eaf3e8; color: #2b6846; }
 .topbar-icon-button:disabled { opacity: .55; }
@@ -699,6 +709,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .global-settings-section-head h2 { margin: 14px 0 6px; color: #31543f; font: 400 21px 'Libre Baskerville', 'Songti SC', Georgia, serif; }
 .global-settings-section-head p { margin: 0; color: #97a79a; font-size: 11px; line-height: 1.6; }
 .global-settings-section-head .button { min-height: 34px; }
+.default-agent-options { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 27px 24px; }
+.default-agent-option { position: relative; display: flex; align-items: center; gap: 9px; min-width: 172px; min-height: 42px; padding: 0 12px; border: 1px solid #e0e9df; border-radius: 7px; background: #fafcf9; color: #597460; cursor: pointer; font-size: 12px; font-weight: 700; }
+.default-agent-option:hover { border-color: #b9d4ba; }
+.default-agent-option.selected { border-color: #9dc5a4; background: #eff7ed; color: #2a6846; }
+.default-agent-option > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.default-agent-option:focus-within { outline: 3px solid #a5c2b0; outline-offset: 2px; }
+.default-agent-option > svg:last-child { margin-left: auto; }
 .global-settings-list { border-top: 1px solid #e9eee7; }
 .global-settings-row { display: grid; grid-template-columns: 36px minmax(115px, 1.2fr) 78px 82px minmax(165px, 1.7fr) 110px; align-items: center; gap: 13px; min-height: 83px; padding: 13px 27px; }
 .global-settings-row + .global-settings-row { border-top: 1px solid #edf1eb; }

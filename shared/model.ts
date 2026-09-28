@@ -1,3 +1,5 @@
+import type { SessionProvider } from './sessions'
+
 export type PaperStatus = 'idea' | 'research' | 'writing' | 'submitted' | 'revision' | 'published' | 'paused'
 export type RouteStatus = 'exploring' | 'active' | 'paused' | 'closed'
 export type ImplementationStatus = 'planned' | 'in_progress' | 'done' | 'blocked'
@@ -69,15 +71,17 @@ export interface Paper {
 
 export interface WorkspaceData {
   schemaVersion: 1
+  defaultAgent?: SessionProvider
   papers: Paper[]
 }
 
-export const emptyWorkspace = (): WorkspaceData => ({ schemaVersion: 1, papers: [] })
+export const emptyWorkspace = (): WorkspaceData => ({ schemaVersion: 1, defaultAgent: 'codex', papers: [] })
 
 export function isWorkspaceData(value: unknown): value is WorkspaceData {
   if (!value || typeof value !== 'object') return false
   const workspace = value as Partial<WorkspaceData>
   if (workspace.schemaVersion !== 1 || !Array.isArray(workspace.papers)) return false
+  if (workspace.defaultAgent !== undefined && workspace.defaultAgent !== 'codex' && workspace.defaultAgent !== 'claude') return false
 
   const isText = (text: unknown): text is string => typeof text === 'string'
   const hasIdentity = (record: unknown): record is { id: string } =>

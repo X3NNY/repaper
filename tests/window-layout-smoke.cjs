@@ -96,8 +96,16 @@ app.whenReady().then(async () => {
     stage = 'navigation'
     const navigation = await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.paper-side-link span')).map((item) => item.textContent.trim())`)
     if (JSON.stringify(navigation) !== JSON.stringify(['概况', '会话', '写作', '实验'])) throw new Error(`论文导航不正确：${JSON.stringify(navigation)}`)
-    await waitFor(() => win.webContents.executeJavaScript(`document.querySelector('.topbar-right')?.innerText.includes('新建 Codex') && document.querySelector('.topbar-right')?.innerText.includes('新建 Claude')`))
-    const sessionsActions = await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.topbar-right button')).map((item) => item.textContent.trim() || item.getAttribute('aria-label'))`)
+    await waitFor(() => win.webContents.executeJavaScript(`document.querySelector('.session-new-main')?.innerText.includes('新建 Codex')`))
+    await win.webContents.executeJavaScript(`document.querySelector('.session-new-arrow').click()`)
+    const sessionsActions = await win.webContents.executeJavaScript(`({
+      primary: document.querySelector('.session-new-main')?.textContent.trim(),
+      options: Array.from(document.querySelectorAll('.session-new-menu button')).map((item) => item.textContent.trim())
+    })`)
+    if (sessionsActions.options.length !== 2 || !sessionsActions.options[0].includes('Codex') || !sessionsActions.options[1].includes('Claude Code')) throw new Error(`新建会话下拉菜单不正确：${JSON.stringify(sessionsActions)}`)
+    await new Promise((done) => setTimeout(done, 400))
+    fs.writeFileSync(path.join(fixture, 'sessions-menu.png'), (await win.webContents.capturePage()).toPNG())
+    await win.webContents.executeJavaScript(`document.querySelector('.session-new-arrow').click()`)
     await win.webContents.executeJavaScript('document.querySelector(".paper-side-link").click()')
     await waitFor(() => win.webContents.executeJavaScript('Boolean(document.querySelector(".overview-grid"))'))
     const overview = await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.overview-grid .section-heading h2')).map((item) => item.textContent.trim())`)
@@ -166,7 +174,18 @@ app.whenReady().then(async () => {
     stage = 'experiments'
     await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.paper-side-link')).find((item) => item.textContent.includes('实验')).click()`)
     await waitFor(() => win.webContents.executeJavaScript(`document.querySelector('.topbar-right')?.innerText.includes('刷新实验')`))
-    result = { navigation, sessionsActions, overview, writingActions, beforeDrag, afterDrag, pdfStability, normal, narrow, narrowWriting, maximized, experimentsAction: true }
+    stage = 'default-agent'
+    await win.webContents.executeJavaScript(`document.querySelector('.sidebar-return').click()`)
+    await waitFor(() => win.webContents.executeJavaScript(`Boolean(document.querySelector('.main-nav'))`))
+    await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.main-nav .nav-link')).find((item) => item.textContent.includes('设置')).click()`)
+    await waitFor(() => win.webContents.executeJavaScript(`document.querySelector('input[name="default-agent"][value="codex"]')?.checked`))
+    await win.webContents.executeJavaScript(`document.querySelector('input[name="default-agent"][value="claude"]').click()`)
+    await waitFor(() => win.webContents.executeJavaScript(`window.paperApi.loadWorkspace().then((item) => item.defaultAgent === 'claude')`))
+    await new Promise((done) => setTimeout(done, 400))
+    fs.writeFileSync(path.join(fixture, 'default-agent-settings.png'), (await win.webContents.capturePage()).toPNG())
+    await win.webContents.executeJavaScript(`document.querySelector('.recent-link').click()`)
+    await waitFor(() => win.webContents.executeJavaScript(`document.querySelector('.session-new-main')?.innerText.includes('新建 Claude Code')`))
+    result = { navigation, sessionsActions, overview, writingActions, beforeDrag, afterDrag, pdfStability, normal, narrow, narrowWriting, maximized, experimentsAction: true, defaultAgent: 'claude' }
   } catch (error) {
     result = { stage, error: String(error), stack: error?.stack }
   } finally {

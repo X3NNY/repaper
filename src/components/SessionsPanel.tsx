@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowRight, CircleAlert, Code2, FolderOpen, LoaderCircle, MessageSquareText,
-  Plus, RefreshCw, Search, TerminalSquare, X
+  ArrowRight, Check, ChevronDown, CircleAlert, Code2, FolderOpen, LoaderCircle,
+  MessageSquareText, Plus, RefreshCw, Search, TerminalSquare, X
 } from 'lucide-react'
 import type { CodexThreadSummary } from '../../shared/codex'
 import type { SessionProvider, SessionSummary, SessionTerminalInfo } from '../../shared/sessions'
@@ -13,6 +13,7 @@ interface Props {
   folderPath?: string
   onChooseFolder: () => void
   toolbarTarget: HTMLDivElement | null
+  defaultAgent: SessionProvider
 }
 
 const providerNames: Record<SessionProvider, string> = {
@@ -25,7 +26,7 @@ function sessionTime(value: number): string {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(value * 1000))
 }
 
-export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarget }: Props) {
+export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarget, defaultAgent }: Props) {
   const api = window.paperApi
   const [codexThreads, setCodexThreads] = useState<CodexThreadSummary[]>([])
   const [claudeSessions, setClaudeSessions] = useState<SessionSummary[]>([])
@@ -39,11 +40,24 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
   const [launching, setLaunching] = useState<string | null>(null)
   const [listErrors, setListErrors] = useState<Record<SessionProvider, string>>({ codex: '', claude: '' })
   const [terminalError, setTerminalError] = useState('')
+  const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false)
   const folderRef = useRef(folderPath)
+  const newSessionControlRef = useRef<HTMLDivElement>(null)
   const codexListModeRef = useRef(false)
   const codexRequestRef = useRef(0)
   const claudeRequestRef = useRef(0)
   folderRef.current = folderPath
+
+  useEffect(() => {
+    if (!newSessionMenuOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!newSessionControlRef.current?.contains(event.target as Node)) setNewSessionMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setNewSessionMenuOpen(false) }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown) }
+  }, [newSessionMenuOpen])
 
   const refreshCodex = useCallback(async (cursor?: string, scanAll = false) => {
     if (!api || !folderPath) return
@@ -158,6 +172,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
 
   async function startSession(provider: SessionProvider) {
     if (!api || !folderPath || launching) return
+    setNewSessionMenuOpen(false)
     setLaunching(`${provider}:new`)
     setTerminalError('')
     try {
@@ -203,8 +218,11 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
   return <>
     {toolbarTarget ? createPortal(<div className="topbar-page-actions">
       <button className="topbar-icon-button" type="button" onClick={() => { void refreshCodex(); void refreshClaude() }} disabled={loadingCodex || loadingClaude} aria-label="刷新所有会话" title="刷新所有会话"><RefreshCw size={16} className={loadingCodex || loadingClaude ? 'spin' : ''} /></button>
-      <button className="button button-light" onClick={() => void startSession('codex')} disabled={Boolean(launching)}><Plus size={15} /> {launching === 'codex:new' ? '启动中…' : '新建 Codex'}</button>
-      <button className="button button-primary" onClick={() => void startSession('claude')} disabled={Boolean(launching)}><Plus size={15} /> {launching === 'claude:new' ? '启动中…' : '新建 Claude'}</button>
+      <div className="session-new-control" ref={newSessionControlRef}>
+        <button className="button button-primary session-new-main" onClick={() => void startSession(defaultAgent)} disabled={Boolean(launching)}><Plus size={15} />{launching ? '启动中…' : `新建 ${providerNames[defaultAgent]}`}</button>
+        <button className="button button-primary session-new-arrow" onClick={() => setNewSessionMenuOpen((open) => !open)} disabled={Boolean(launching)} aria-label="选择新会话 Agent" aria-haspopup="menu" aria-expanded={newSessionMenuOpen}><ChevronDown size={15} /></button>
+        {newSessionMenuOpen ? <div className="session-new-menu" role="menu" aria-label="选择新会话 Agent">{(['codex', 'claude'] as const).map((provider) => <button key={provider} role="menuitem" onClick={() => void startSession(provider)}><span>新建 {providerNames[provider]}</span>{provider === defaultAgent ? <><small>默认</small><Check size={14} /></> : null}</button>)}</div> : null}
+      </div>
     </div>, toolbarTarget) : null}
     <section className="codex-panel">
     <aside className="codex-thread-list" aria-label="会话列表">
