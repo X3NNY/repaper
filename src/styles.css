@@ -586,8 +586,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .experiment-item-list button > span { color: #97a99b; font-size: 10px; }
 .experiment-item-list svg { color: #a2b6a3; }
 .experiment-run-layout { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(330px, 1.25fr); gap: 14px; align-items: start; }
-.experiment-run-list { display: grid; gap: 5px; }
-.experiment-run-row { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 51px; padding: 8px 10px; border: 1px solid #e8ede6; border-radius: 7px; background: #fff; text-align: left; }
+.experiment-run-list { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 5px; }
+.experiment-run-row { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; min-height: 51px; padding: 8px 10px; border: 1px solid #e8ede6; border-radius: 7px; background: #fff; text-align: left; }
 .experiment-run-row:hover { background: #f9fbf8; border-color: #d2e3d1; }
 .experiment-run-row.selected { border-color: #bfd7bf; background: #f2f8f0; }
 .experiment-run-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; }
