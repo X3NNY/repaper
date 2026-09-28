@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+.paper/
+.repaper/
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+release-assets/
+tmp/

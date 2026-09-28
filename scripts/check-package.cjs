@@ -1,0 +1,79 @@
+const assert = require('node:assert/strict')
+const { existsSync, mkdtempSync, readFileSync, rmSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join, resolve } = require('node:path')
+const { spawnSync } = require('node:child_process')
+
+async function checkNative(modulePath) {
+  const pty = require(modulePath)
+  const windows = process.platform === 'win32'
+  const terminal = pty.spawn(windows ? process.env.ComSpec || 'cmd.exe' : '/bin/sh',
+    windows ? ['/d', '/c', 'echo REPAPER_PTY_OK'] : ['-c', 'printf REPAPER_PTY_OK'],
+    { cwd: tmpdir(), env: process.env, cols: 80, rows: 24 })
+  let output = ''
+  await new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => {
+      terminal.kill()
+      reject(new Error('Packaged native terminal timed out'))
+    }, 15000)
+    terminal.onData(data => { output += data })
+    terminal.onExit(({ exitCode }) => {
+      clearTimeout(timer)
+      if (exitCode !== 0 || !output.includes('REPAPER_PTY_OK')) {
+        reject(new Error(`Packaged terminal failed (${exitCode}): ${output}`))
+      } else resolvePromise()
+    })
+  })
+  console.log('Packaged node-pty successfully launched a shell')
+}
+
+function checkPackage() {
+  const dist = resolve(__dirname, '../dist')
+  let executable, resources
+  if (process.platform === 'win32') {
+    executable = join(dist, 'win-unpacked', 'repaper.exe')
+    resources = join(dist, 'win-unpacked', 'resources')
+  } else if (process.platform === 'darwin') {
+    const folder = process.arch === 'arm64' ? 'mac-arm64' : 'mac'
+    const contents = join(dist, folder, 'repaper.app', 'Contents')
+    executable = join(contents, 'MacOS', 'repaper')
+    resources = join(contents, 'Resources')
+  } else {
+    executable = join(dist, 'linux-unpacked', 'repaper')
+    resources = join(dist, 'linux-unpacked', 'resources')
+  }
+  const cli = join(resources, 'cli', 'repaper.cjs')
+  const skill = join(resources, 'skills', 'repaper-experiments', 'SKILL.md')
+  for (const file of [executable, cli, skill, join(resources, 'app.asar')]) {
+    assert.ok(existsSync(file), `Missing packaged resource: ${file}`)
+  }
+  assert.match(readFileSync(skill, 'utf8'), /name: repaper-experiments/)
+  const fixture = mkdtempSync(join(tmpdir(), 'repaper package-'))
+  try {
+    const run = args => {
+      const result = spawnSync(executable, args, {
+        cwd: fixture, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', REPAPER_ROOT: fixture },
+        encoding: 'utf8', timeout: 30000, windowsHide: true
+      })
+      if (result.error) throw result.error
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+      return result.stdout
+    }
+    run([cli, 'init'])
+    const status = JSON.parse(run([cli, 'status', '--json']))
+    assert.equal(status.groups, 0)
+    assert.equal(status.runs, 0)
+    console.log('Packaged CLI initialized and read a local project')
+    console.log(run([__filename, '--native', join(resources, 'app.asar.unpacked', 'node_modules', 'node-pty')]).trim())
+  } finally {
+    // fixture is exclusively created by mkdtempSync under the OS temp directory.
+    rmSync(fixture, { recursive: true, force: true })
+  }
+}
+
+Promise.resolve().then(() => process.argv[2] === '--native'
+  ? checkNative(process.argv[3])
+  : checkPackage()).catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

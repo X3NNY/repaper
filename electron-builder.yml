@@ -1,0 +1,46 @@
+appId: io.github.x3nny.repaper
+productName: repaper
+directories:
+  output: dist
+artifactName: repaper-${version}-${os}-${arch}.${ext}
+asar: true
+asarUnpack:
+  - node_modules/node-pty/**/*
+files:
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
+  - package.json
+extraResources:
+  - from: out/cli/repaper.cjs
+    to: cli/repaper.cjs
+  - from: skills/repaper-experiments/SKILL.md
+    to: skills/repaper-experiments/SKILL.md
+# node-pty 1.1 uses Node-API. Its npm install script supplies native binaries
+# (or builds them on Linux); avoid forcing a second, Electron-specific rebuild.
+# Revisit this setting if an addon tied to Node/V8's ABI is added.
+npmRebuild: false
+electronDist: node_modules/electron/dist
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # Ad-hoc signing supports Apple Silicon without a developer certificate.
+  # Replace with Developer ID signing and notarization for trusted distribution.
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false
+linux:
+  category: Education
+  target:
+    - AppImage
+    - tar.gz

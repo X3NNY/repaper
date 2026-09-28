@@ -1,0 +1,61 @@
+{
+  "name": "repaper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A personal paper workspace for AI-assisted research",
+  "author": "X3NNY",
+  "license": "MIT",
+  "homepage": "https://github.com/X3NNY/repaper",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/X3NNY/repaper.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "main": "./out/main/index.js",
+  "bin": {
+    "repaper": "./out/cli/repaper.cjs"
+  },
+  "scripts": {
+    "dev": "npm run build:cli && electron-vite dev",
+    "postinstall": "node node_modules/electron/install.js",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "build:cli": "esbuild cli/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=out/cli/repaper.cjs",
+    "test:experiments": "npm run build:cli && node --test tests/experiments.test.cjs",
+    "build": "npm run typecheck && npm run build:cli && electron-vite build",
+    "preview": "electron-vite preview",
+    "pack": "npm run build && electron-builder --dir --publish never",
+    "dist": "npm run build && electron-builder --publish never",
+    "test:package": "node scripts/check-package.cjs",
+    "release:draft": "node scripts/publish-release.cjs"
+  },
+  "dependencies": {
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/legacy-modes": "^6.5.4",
+    "@codemirror/merge": "^6.12.2",
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/libre-baskerville": "^5.3.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "codemirror": "^6.0.2",
+    "lucide-react": "^1.48.0",
+    "node-pty": "^1.1.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.13.5",
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

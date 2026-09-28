@@ -1,0 +1,96 @@
+name: Build desktop releases
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: win
+            runner: windows-2022
+            arch: x64
+          - platform: mac
+            runner: macos-15-intel
+            arch: x64
+          - platform: mac
+            runner: macos-15
+            arch: arm64
+          - platform: linux
+            runner: ubuntu-22.04
+            arch: x64
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Check release version and runner architecture
+        shell: bash
+        run: |
+          node scripts/check-release-tag.cjs
+          node -e "if (process.arch !== '${{ matrix.arch }}') throw new Error('Runner architecture does not match build target')"
+      - name: Install Linux build and runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libarchive-tools libgtk-3-0 libnss3 libatk-bridge2.0-0 libgbm1 libasound2
+      - run: npm ci
+      - run: npm run test:experiments
+      - name: Build native installers
+        run: npm run dist -- --${{ matrix.platform }} --${{ matrix.arch }}
+      - name: Check packaged CLI and native terminal
+        run: npm run test:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repaper-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.tar.gz
+
+  release:
+    name: Create release draft
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: repaper-*
+          path: release-assets
+          merge-multiple: true
+      - name: Upload installers and checksums to a draft
+        run: npm run release:draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
