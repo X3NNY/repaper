@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict')
-const { existsSync, mkdtempSync, readFileSync, rmSync } = require('node:fs')
+const { accessSync, constants, existsSync, mkdtempSync, readFileSync, rmSync, statSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, resolve } = require('node:path')
 const { spawnSync } = require('node:child_process')
@@ -7,6 +7,12 @@ const { spawnSync } = require('node:child_process')
 async function checkNative(modulePath) {
   const pty = require(modulePath)
   const windows = process.platform === 'win32'
+  if (!windows) {
+    const native = require(join(modulePath, 'lib', 'utils.js')).loadNativeModule('pty')
+    const helper = resolve(modulePath, 'lib', native.dir, 'spawn-helper').replace('app.asar', 'app.asar.unpacked')
+    accessSync(helper, constants.X_OK)
+    console.log(`Native helper: ${helper}; mode=${(statSync(helper).mode & 0o777).toString(8)}`)
+  }
   const terminal = pty.spawn(windows ? process.env.ComSpec || 'cmd.exe' : '/bin/sh',
     windows ? ['/d', '/c', 'echo REPAPER_PTY_OK'] : ['-c', 'printf REPAPER_PTY_OK'],
     { cwd: tmpdir(), env: process.env, cols: 80, rows: 24 })

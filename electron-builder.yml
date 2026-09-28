@@ -4,6 +4,7 @@ directories:
   output: dist
 artifactName: repaper-${version}-${os}-${arch}.${ext}
 asar: true
+afterPack: scripts/after-pack.cjs
 asarUnpack:
   - node_modules/node-pty/**/*
 files:
