@@ -37,20 +37,23 @@ function checkPackage() {
   const dist = resolve(__dirname, '../dist')
   let executable, resources
   if (process.platform === 'win32') {
-    executable = join(dist, 'win-unpacked', 'repaper.exe')
-    resources = join(dist, 'win-unpacked', 'resources')
+    const folder = process.arch === 'arm64' ? 'win-arm64-unpacked' : 'win-unpacked'
+    executable = join(dist, folder, 'repaper.exe')
+    resources = join(dist, folder, 'resources')
   } else if (process.platform === 'darwin') {
     const folder = process.arch === 'arm64' ? 'mac-arm64' : 'mac'
     const contents = join(dist, folder, 'repaper.app', 'Contents')
     executable = join(contents, 'MacOS', 'repaper')
     resources = join(contents, 'Resources')
   } else {
-    executable = join(dist, 'linux-unpacked', 'repaper')
-    resources = join(dist, 'linux-unpacked', 'resources')
+    const folder = process.arch === 'arm64' ? 'linux-arm64-unpacked' : 'linux-unpacked'
+    executable = join(dist, folder, 'repaper')
+    resources = join(dist, folder, 'resources')
   }
   const cli = join(resources, 'cli', 'repaper.cjs')
   const skill = join(resources, 'skills', 'repaper-experiments', 'SKILL.md')
-  for (const file of [executable, cli, skill, join(resources, 'app.asar')]) {
+  const icon = join(resources, 'icons', 'repaper.png')
+  for (const file of [executable, cli, skill, icon, join(resources, 'app.asar')]) {
     assert.ok(existsSync(file), `Missing packaged resource: ${file}`)
   }
   assert.match(readFileSync(skill, 'utf8'), /name: repaper-experiments/)

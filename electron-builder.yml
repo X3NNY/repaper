@@ -18,31 +18,40 @@ extraResources:
     to: cli/repaper.cjs
   - from: skills/repaper-experiments/SKILL.md
     to: skills/repaper-experiments/SKILL.md
+  - from: build/icons/repaper.png
+    to: icons/repaper.png
 # node-pty 1.1 uses Node-API. Its npm install script supplies native binaries
 # (or builds them on Linux); avoid forcing a second, Electron-specific rebuild.
 # Revisit this setting if an addon tied to Node/V8's ABI is added.
 npmRebuild: false
 electronDist: node_modules/electron/dist
 win:
+  icon: build/icons/repaper.ico
   target:
     - nsis
 nsis:
+  installerIcon: build/icons/repaper.ico
+  uninstallerIcon: build/icons/repaper.ico
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
 mac:
+  icon: build/icons/repaper.png
   category: public.app-category.productivity
   target:
     - dmg
-    - zip
   # Ad-hoc signing supports Apple Silicon without a developer certificate.
   # Replace with Developer ID signing and notarization for trusted distribution.
   identity: '-'
   hardenedRuntime: false
   notarize: false
 linux:
+  icon: build/icons/repaper.png
   category: Education
+  maintainer: X3NNY <xenny@vip.qq.com>
   target:
     - AppImage
     - tar.gz
+    - deb
+    - rpm

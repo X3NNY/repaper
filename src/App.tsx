@@ -241,14 +241,13 @@ export default function App() {
   if (loadError) return (
     <div className="fatal-screen"><div className="fatal-card"><CircleAlert size={34} /><h1>工作区暂时无法读取</h1><p>{loadError}</p><button className="button button-primary" onClick={() => setReloadKey((value) => value + 1)}>重新尝试</button></div></div>
   )
-  if (!workspace) return <div className="loading-screen"><div className="brand-mark">r<span>:</span>p</div><p>正在整理你的研究工作台…</p></div>
+  if (!workspace) return <div className="loading-screen"><div className="brand-mark"><img src="./repaper-logo.svg" alt="re:paper" /></div><p>正在整理你的研究工作台…</p></div>
 
   return (
     <div className="app-shell">
       <aside className={`sidebar ${selectedPaper ? 'paper-sidebar' : ''}`}>
         <button className="brand" onClick={() => setView({ kind: 'dashboard' })} aria-label="返回总览">
-          <span className="brand-symbol"><span>r</span><i>:</i><span>p</span></span>
-          <span className="brand-copy"><strong>re:paper</strong><small>研究工作台</small></span>
+          <img className="brand-logo" src="./repaper-logo.svg" alt="re:paper" />
         </button>
 
         {selectedPaper ? <>

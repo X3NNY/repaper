@@ -6,12 +6,14 @@ re:paper 使用 electron-vite 编译代码、electron-builder 生成桌面安装
 
 | 平台 | 架构 | 文件 |
 | --- | --- | --- |
-| Windows | x64 | NSIS `.exe` 安装包 |
-| macOS | Intel x64 | `.dmg` 和 `.zip` |
-| macOS | Apple Silicon arm64 | `.dmg` 和 `.zip` |
-| Linux | x64 | `.AppImage` 和 `.tar.gz` |
+| Windows | x64 / arm64 | NSIS `.exe` 安装包 |
+| macOS | Intel x64 | `.dmg` |
+| macOS | Apple Silicon arm64 | `.dmg` |
+| Linux | x64 / arm64 | `.AppImage`、`.tar.gz`、`.deb` 和 `.rpm` |
 
-每个 Release 草稿包含七个安装包或压缩包、`SHA256SUMS.txt` 校验文件和 MIT `LICENSE`。CLI、Agent Skill 和 Electron 运行环境会随应用打包；Git、TeX、Codex / Claude Code 和实验环境由用户按需安装。
+每个 Release 草稿包含十二个安装包或压缩包、`SHA256SUMS.txt` 校验文件和 MIT `LICENSE`。CLI、Agent Skill 和 Electron 运行环境会随应用打包；Git、TeX、Codex / Claude Code 和实验环境由用户按需安装。
+
+Windows ARM64 和 Linux ARM64 从下一版本开始提供；现有 v0.1.0 不包含这两种安装包。新增目标需通过对应原生 runner 的构建及打包检查后才会进入 Release 草稿。
 
 ## 本地打包
 
@@ -32,6 +34,9 @@ npm run test:package
 # Windows x64
 npm run dist -- --win --x64
 
+# Windows ARM64（在 ARM64 Windows 上构建）
+npm run dist -- --win --arm64
+
 # macOS Apple Silicon
 npm run dist -- --mac --arm64
 
@@ -40,6 +45,9 @@ npm run dist -- --mac --x64
 
 # Linux x64
 npm run dist -- --linux --x64
+
+# Linux ARM64（在 ARM64 Linux 上构建）
+npm run dist -- --linux --arm64
 ```
 
 node-pty 1.1 使用 Node-API：Windows 和 macOS 使用包内预编译文件，Linux 由 npm 安装脚本从源码构建。打包器关闭了重复的 Electron ABI 重编译，最终由打包检查验证实际兼容性。Linux 需要编译工具链与 Python；如果主动要求 Windows 源码构建，还需要包含 Spectre 库的 Visual Studio C++ Build Tools。GitHub Runner 已提供基础工具，工作流会补充 Linux 依赖。
@@ -49,7 +57,7 @@ node-pty 1.1 使用 Node-API：Windows 和 macOS 使用包内预编译文件，L
 工作流位于 [release.yml](../.github/workflows/release.yml)。
 
 - **手动运行主分支**：在 Actions 中选择 “Build desktop releases” → “Run workflow”。只生成 Actions artifacts，保留 14 天，适合预检。
-- **推送版本标签**：标签必须为 `v` 加 `package.json` 中的完整版本号。四个构建任务及打包检查全部通过后，创建 GitHub Release 草稿。
+- **推送版本标签**：标签必须为 `v` 加 `package.json` 中的完整版本号。六个构建任务及打包检查全部通过后，创建 GitHub Release 草稿。
 - **重跑失败任务**：可以补齐同一标签的草稿资源；工作流拒绝覆盖已公开发布的 Release。
 
 首次发布现有版本：
@@ -76,9 +84,18 @@ git push origin v0.1.1
 
 到 [Releases](https://github.com/X3NNY/repaper/releases) 打开草稿，确认各平台安装、应用启动、终端会话和写作功能，再编辑发布说明并点击 “Publish release”。构建与打包检查不替代各平台完整交互测试。
 
-如果四个平台的构建和检查都已通过，只有最终上传失败，可以修复发布脚本后，在主分支运行 **Publish existing release artifacts**，输入原版本标签和该标签的构建 Run ID。它会校验构建提交与标签一致、四个平台任务均成功，再复用同一次构建的产物创建草稿。当前 `package.json` 的版本必须仍与该标签一致，产物也必须尚未过期。该流程保持原标签不变，并拒绝覆盖已公开发布的 Release。
+如果六个平台/架构组合的构建和检查都已通过，只有最终上传失败，可以修复发布脚本后，在主分支运行 **Publish existing release artifacts**，输入原版本标签和该标签的构建 Run ID。它会校验构建提交与标签一致、六个平台/架构组合任务均成功，再复用同一次构建的产物创建草稿。当前 `package.json` 的版本必须仍与该标签一致，产物也必须尚未过期。该流程保持原标签不变，并拒绝覆盖已公开发布的 Release。
 
-AppImage 使用 `x86_64` 架构后缀，Linux tar.gz 使用 `x64`；发布脚本会按实际名称检查这两种产物。
+Linux 文件名的架构后缀随格式不同：
+
+| 格式 | x64 | ARM64 |
+| --- | --- | --- |
+| AppImage | `x86_64` | `arm64` |
+| tar.gz | `x64` | `arm64` |
+| DEB | `amd64` | `arm64` |
+| RPM | `x86_64` | `aarch64` |
+
+发布脚本会校验全部十二个产物，并拒绝混入旧 ZIP 包。DEB 面向 Debian / Ubuntu，RPM 面向 Fedora / RHEL 系；CI 已安装 RPM 打包工具。macOS 从下一版本开始仅提供 DMG，已有公开 Release 保持不变。
 
 ## 签名与安装提示
 

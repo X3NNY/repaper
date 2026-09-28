@@ -26,12 +26,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .app-shell { min-height: 100vh; display: flex; }
 .sidebar { width: 246px; flex: 0 0 246px; height: 100vh; position: sticky; top: 0; display: flex; flex-direction: column; background: #eceee8; border-right: 1px solid #dfe4da; padding: 28px 16px 22px; }
 .sidebar.paper-sidebar { padding-bottom: 16px; }
-.brand { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 2px 12px; }
-.brand-symbol { width: 39px; height: 39px; display: flex; align-items: center; justify-content: center; background: var(--deep); color: #fcf6ea; border-radius: 11px; font: 700 18px 'Libre Baskerville', Georgia, serif; letter-spacing: -3px; padding-right: 3px; box-shadow: 0 7px 15px #173c3322; }
-.brand-symbol i { color: #e8a482; font-style: normal; margin: 0 2px; }
-.brand-copy { display: flex; flex-direction: column; gap: 1px; }
-.brand-copy strong { font: 700 20px 'Libre Baskerville', Georgia, serif; letter-spacing: -1px; }
-.brand-copy small { color: #7c8a7e; font-size: 10px; letter-spacing: .2em; }
+.brand { display: flex; align-items: center; width: 100%; min-height: 43px; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 2px 8px; }
+.brand-logo { display: block; width: min(190px, 100%); height: auto; }
 .sidebar-section-label, .sidebar-heading { color: #9aa49c; font-size: 10px; font-weight: 700; letter-spacing: .17em; }
 .sidebar-section-label { margin: 57px 15px 13px; }
 .main-nav { display: flex; flex-direction: column; gap: 5px; }
@@ -84,7 +80,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .main-panel { min-width: 0; flex: 1; }
 .topbar { height: var(--topbar-height, 74px); padding: 0 46px; background: #fcfcfa; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.windows-titlebar-overlay { --topbar-height: 56px; }
+.windows-titlebar-overlay { --topbar-height: 48px; }
 .windows-titlebar-overlay .sidebar { padding-top: 8px; }
 .windows-titlebar-overlay .topbar { padding-left: clamp(30px, 3.2vw, 46px); padding-right: 160px; -webkit-app-region: drag; }
 .windows-titlebar-overlay .topbar-right { -webkit-app-region: no-drag; }
@@ -681,8 +677,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .toast { position: fixed; right: 28px; bottom: 25px; z-index: 60; display: flex; align-items: center; gap: 9px; min-width: 180px; padding: 12px 13px; border-radius: 8px; background: #244d3a; box-shadow: 0 12px 35px #173c3333; color: #e8f7e7; font-size: 11px; }
 .toast > button { display: grid; place-items: center; margin-left: 10px; border: 0; background: transparent; color: #bcd8bd; }
 .loading-screen, .fatal-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; background: #f7f6f2; }
-.loading-screen .brand-mark { font: 36px 'Libre Baskerville', Georgia, serif; color: #28543c; }
-.loading-screen .brand-mark span { color: #c78661; }
+.loading-screen .brand-mark { width: min(290px, 80vw); }
+.loading-screen .brand-mark img { display: block; width: 100%; height: auto; }
 .loading-screen p { color: #8da28f; font-size: 12px; margin-top: 19px; }
 .fatal-card { max-width: 450px; display: flex; flex-direction: column; align-items: flex-start; padding: 34px; background: #fff; border: 1px solid #e8eae4; border-radius: 10px; box-shadow: 0 20px 60px #243d2410; }
 .fatal-card svg { color: #ba6759; }

@@ -1,5 +1,7 @@
 # re:paper
 
+<img src="./src/public/repaper-logo.svg" alt="re:paper" width="280" />
+
 ![re:paper 个人论文管理框架](./docs/assets/architecture.png)
 
 ### 管好你正在做的每一篇论文
@@ -97,9 +99,11 @@ repaper status --json
 | 操作系统 | 下载文件 | 说明 |
 | --- | --- | --- |
 | **Windows x64** | `repaper-x.x.x-win-x64.exe` | NSIS 安装包 |
-| **macOS Intel** | `repaper-x.x.x-mac-x64.dmg` / `.zip` | Intel 版本 |
-| **macOS Apple Silicon** | `repaper-x.x.x-mac-arm64.dmg` / `.zip` | Apple Silicon 版本 |
+| **macOS Intel** | `repaper-x.x.x-mac-x64.dmg` | Intel 版本 |
+| **macOS Apple Silicon** | `repaper-x.x.x-mac-arm64.dmg` | Apple Silicon 版本 |
 | **Linux x64** | `repaper-x.x.x-linux-x86_64.AppImage` / `repaper-x.x.x-linux-x64.tar.gz` | AppImage 或解压运行 |
+
+发布流程已加入 Windows ARM64 和 Linux ARM64，并为 Linux 两种架构增加 DEB、RPM 包；macOS 仅构建 DMG。以上变更随下一版本提供，现有 v0.1.0 保持不变。
 
 当前 Windows 包未使用发行商证书，macOS 包采用 ad-hoc 签名，尚未 notarize。系统可能显示安装安全提示；详情见[签名与安装说明](docs/releases.md#签名与安装提示)。
 
@@ -161,7 +165,9 @@ npm run preview
 
 ```
 
-生成本机安装包使用 `npm run dist`，产物保存在 `dist/`。推送与项目版本一致的 `v*` 标签后，GitHub Actions 会在四个系统/架构组合上构建并检查打包后的 CLI 和原生终端，全部成功后创建 Release 草稿。完整命令和发布步骤见[构建与发布](docs/releases.md)。
+生成本机安装包使用 `npm run dist`，产物保存在 `dist/`。推送与项目版本一致的 `v*` 标签后，GitHub Actions 会在六个系统/架构组合上构建并检查打包后的 CLI 和原生终端，全部成功后创建 Release 草稿。完整命令和发布步骤见[构建与发布](docs/releases.md)。
+
+品牌源文件是 `src/public/repaper-logo.svg`。替换后运行 `npm run icons`，可更新网页 favicon 和各平台应用图标。
 
 ### 项目结构
 

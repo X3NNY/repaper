@@ -11,15 +11,20 @@ assert.equal(requestedTag, tag, 'Release tag must match package.json')
 const directory = resolve(__dirname, '../release-assets')
 const names = [
   `repaper-${version}-win-x64.exe`,
+  `repaper-${version}-win-arm64.exe`,
   `repaper-${version}-mac-x64.dmg`,
-  `repaper-${version}-mac-x64.zip`,
   `repaper-${version}-mac-arm64.dmg`,
-  `repaper-${version}-mac-arm64.zip`,
   `repaper-${version}-linux-x86_64.AppImage`,
-  `repaper-${version}-linux-x64.tar.gz`
+  `repaper-${version}-linux-x64.tar.gz`,
+  `repaper-${version}-linux-arm64.AppImage`,
+  `repaper-${version}-linux-arm64.tar.gz`,
+  `repaper-${version}-linux-amd64.deb`,
+  `repaper-${version}-linux-arm64.deb`,
+  `repaper-${version}-linux-x86_64.rpm`,
+  `repaper-${version}-linux-aarch64.rpm`
 ].sort()
-const found = readdirSync(directory).filter(name => /\.(exe|dmg|zip|AppImage|tar\.gz)$/.test(name)).sort()
-assert.deepEqual(found, names, 'All seven expected installers/archives must exist before publishing')
+const found = readdirSync(directory).filter(name => /\.(exe|dmg|zip|deb|rpm|AppImage|tar\.gz)$/.test(name)).sort()
+assert.deepEqual(found, names, 'All twelve expected installers/archives must exist before publishing; ZIP packages are no longer supported')
 const sums = names.map(name => `${createHash('sha256').update(readFileSync(join(directory, name))).digest('hex')}  ${name}`)
 writeFileSync(join(directory, 'SHA256SUMS.txt'), `${sums.join('\n')}\n`)
 

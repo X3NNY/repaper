@@ -26,9 +26,9 @@ assert.equal(object.type, 'commit', 'Tag must resolve to a commit')
 assert.equal(run.head_sha, object.sha, 'Build commit does not match the release tag')
 
 const jobs = api(`actions/runs/${runId}/jobs?filter=latest&per_page=100`).jobs
-for (const name of ['win / x64', 'mac / x64', 'mac / arm64', 'linux / x64']) {
+for (const name of ['win / x64', 'win / arm64', 'mac / x64', 'mac / arm64', 'linux / x64', 'linux / arm64']) {
   const matches = jobs.filter(job => job.name === name)
   assert.equal(matches.length, 1, `Expected one ${name} job`)
   assert.equal(matches[0].conclusion, 'success', `${name} must have passed build and package checks`)
 }
-console.log(`Verified four successful builds for ${tag} at ${run.head_sha} (run ${runId})`)
+console.log(`Verified six successful builds for ${tag} at ${run.head_sha} (run ${runId})`)

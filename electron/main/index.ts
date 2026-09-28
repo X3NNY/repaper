@@ -79,9 +79,12 @@ function createWindow(): void {
     minHeight: 720,
     backgroundColor: '#f7f6f2',
     title: 're:paper',
+    icon: app.isPackaged
+      ? join(process.resourcesPath, 'icons', 'repaper.png')
+      : join(__dirname, '../../build/icons/repaper.png'),
     ...(process.platform === 'win32' ? {
       titleBarStyle: 'hidden' as const,
-      titleBarOverlay: { color: '#fcfcfa', symbolColor: '#465c4d', height: 56 }
+      titleBarOverlay: { color: '#fcfcfa', symbolColor: '#465c4d', height: 48 }
     } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

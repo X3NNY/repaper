@@ -25,6 +25,9 @@ jobs:
           - platform: win
             runner: windows-2022
             arch: x64
+          - platform: win
+            runner: windows-11-arm
+            arch: arm64
           - platform: mac
             runner: macos-15-intel
             arch: x64
@@ -34,6 +37,9 @@ jobs:
           - platform: linux
             runner: ubuntu-22.04
             arch: x64
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            arch: arm64
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
@@ -52,7 +58,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libarchive-tools libgtk-3-0 libnss3 libatk-bridge2.0-0 libgbm1 libasound2
+          if [ '${{ matrix.arch }}' = 'arm64' ]; then
+            audio_package=libasound2t64
+          else
+            audio_package=libasound2
+          fi
+          sudo apt-get install -y build-essential libarchive-tools rpm libgtk-3-0 libnss3 libatk-bridge2.0-0 libgbm1 "$audio_package"
       - run: npm ci
       - run: npm run test:experiments
       - name: Build native installers
@@ -68,7 +79,8 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
-            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
             dist/*.AppImage
             dist/*.tar.gz
 

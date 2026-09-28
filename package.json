@@ -22,6 +22,7 @@
     "postinstall": "node node_modules/electron/install.js",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "build:cli": "esbuild cli/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=out/cli/repaper.cjs",
+    "icons": "node scripts/generate-icons.cjs",
     "test:experiments": "npm run build:cli && node --test tests/experiments.test.cjs",
     "build": "npm run typecheck && npm run build:cli && electron-vite build",
     "preview": "electron-vite preview",
@@ -46,6 +47,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.9",
     "@swc/core": "^1.13.5",
     "@types/node": "^22.18.0",
     "@types/react": "^19.3.0",

@@ -78,7 +78,7 @@ function verify(layout) {
   if (topbar.top !== 0) throw new Error(`顶栏未与窗口顶部融合：${JSON.stringify(layout)}`)
   if (topbar.contextRight > topbar.actionsLeft - 7) throw new Error(`顶栏操作与页面标题重叠：${JSON.stringify(layout)}`)
   if (process.platform === 'win32') {
-    if (!overlay || !layout.nativeOverlay || topbar.height !== 56 || topbar.drag !== 'drag' || topbar.controls !== 'no-drag') throw new Error(`Windows 标题栏设置不对：${JSON.stringify(layout)}`)
+    if (!overlay || !layout.nativeOverlay || topbar.height !== 48 || topbar.drag !== 'drag' || topbar.controls !== 'no-drag') throw new Error(`Windows 标题栏设置不对：${JSON.stringify(layout)}`)
     if (topbar.rightContent > viewport.width - 155) throw new Error(`顶栏内容占用了窗口按钮区域：${JSON.stringify(layout)}`)
   }
 }

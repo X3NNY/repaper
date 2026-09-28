@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       run_id:
-        description: 'Completed tag build run ID with all four build jobs successful'
+        description: 'Completed tag build run ID with all six build jobs successful'
         required: true
         type: string
 
