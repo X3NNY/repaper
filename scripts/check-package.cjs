@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process')
 async function checkNative(modulePath) {
   const pty = require(modulePath)
   const windows = process.platform === 'win32'
-  if (!windows) {
+  if (process.platform === 'darwin') {
     const native = require(join(modulePath, 'lib', 'utils.js')).loadNativeModule('pty')
     const helper = resolve(modulePath, 'lib', native.dir, 'spawn-helper').replace('app.asar', 'app.asar.unpacked')
     accessSync(helper, constants.X_OK)

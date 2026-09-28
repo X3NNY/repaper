@@ -86,6 +86,6 @@ Linux AppImage 依赖系统提供的运行库；如果环境不支持 FUSE，可
 
 ## 资源与数据
 
-应用代码位于 `app.asar`；node-pty 及辅助程序解包到 `app.asar.unpacked`；实验 CLI 和 Skill 放在 `resources/` 内，通过 Electron 的 `process.resourcesPath` 定位。打包钩子会在签名前为 Unix 终端辅助程序恢复执行权限，打包检查还会验证该权限和实际终端启动。
+应用代码位于 `app.asar`；node-pty 及辅助程序解包到 `app.asar.unpacked`；实验 CLI 和 Skill 放在 `resources/` 内，通过 Electron 的 `process.resourcesPath` 定位。打包钩子会在签名前为 macOS 终端辅助程序恢复执行权限，打包检查还会验证该权限和实际终端启动。Linux 使用 forkpty，不依赖这个辅助程序。
 
 本地 `.paper/`、`.repaper/`、环境变量文件、证书和构建产物被排除在 Git 提交之外。用户项目数据不会作为安装包内容分发。

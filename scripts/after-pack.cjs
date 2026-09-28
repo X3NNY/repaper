@@ -4,10 +4,9 @@ const { join } = require('node:path')
 // A native module can load successfully while its helper lacks executable mode.
 // Restore that mode before macOS signing and before creating any archives.
 module.exports = async function afterPack(context) {
-  if (context.electronPlatformName === 'win32') return
-  const resources = context.electronPlatformName === 'darwin'
-    ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
-    : join(context.appOutDir, 'resources')
+  // Linux uses forkpty directly and does not build a spawn-helper executable.
+  if (context.electronPlatformName !== 'darwin') return
+  const resources = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
   const root = join(resources, 'app.asar.unpacked', 'node_modules', 'node-pty')
   let helpers = 0
   async function visit(directory) {
