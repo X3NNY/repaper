@@ -1,9 +1,3 @@
-# re:paper
-
-<img src="./src/public/repaper-logo.svg" alt="re:paper" width="280" />
-
-![re:paper 个人论文管理框架](./docs/assets/architecture.png)
-
 ### 管好你正在做的每一篇论文
 
 **面向 AI 辅助科研的一站式本地论文管理与工作流工具**
