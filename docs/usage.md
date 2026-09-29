@@ -32,7 +32,7 @@ npm run dev
 
 ## 初始化已有目录
 
-全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments` 与 `repaper-submissions` 三个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录创建 `AGENTS.md` 或向已有文件追加可重复更新的 re:paper 说明。空目录到此为止，不会提前生成文稿或虚构实验记录。
+全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments` 与 `repaper-submissions` 三个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录维护 `AGENTS.md` 的 re:paper 说明；已有文件中的其他内容会保留。空目录到此为止，不会提前生成文稿或虚构实验记录。通过应用启动 Claude Code 时，会提示它读取同一份 `AGENTS.md`；已有 `CLAUDE.md` 的项目也会同步更新其中的 re:paper 区块。
 
 已有内容时，初始化 SKILL 会判断最新的可编辑 LaTeX 主文件，使用 `repaper writing import <主文件> --paper <目录>` 把所选源目录中的 LaTeX 文件和相关图表资源复制到 `.paper/`，以 `manuscript.tex` 作为写作入口，并初始化该目录的 Git。原文件不会移动或覆盖；已有非空 `.paper/` 不会被自动替换。若只有 PDF、Word 等格式而没有 LaTeX 源文件，SKILL 会说明限制并保留原文件。
 
@@ -67,9 +67,12 @@ repaper show <运行ID> --log
 
 记录进展时只需选择状态，再粘贴文本、链接或图片，也可附加 PDF／邮件等文件；原始材料会追加到这条进展。点击“保存并让 Agent 整理”会先准备所选 Agent 的投稿 SKILL，再打开关联终端并自动发送整理指令；以后继续编辑同一进展、补贴新材料时会优先沿用该终端。确认会话已保存后，后续按会话 ID 续接；若首次启动未成功，重新点击可再次发送。没有会话 ID 的旧记录会先查找原会话；旧版误标“已发送”但缺少可靠送达标记时可重新发送，有确认标记却找不到原会话时则会提示。Agent 可读取用户提供的邮件、公开的 OpenReview 内容、投稿系统导出的 PDF／网页／文本及截图，再整理投稿进展。事件外层的摘要可由 AI 撰写；审稿人标签、评分和完整意见正文，以及展示为编辑原话的结论，必须逐字保留原文，不翻译、改写或重组。原文、链接和附件作为来源保留，并与审稿内容关联。不同 venue 的评分保持原始标签和量表，不跨平台换算；缺失日期、决定或截止时间不推测。对于需要登录的 Elsevier 或自建系统，使用用户提供的导出文件或粘贴内容。
 
+普通 Agent 会话可先运行 `repaper submission timeline --json` 获取精简的投稿路线和事件摘要，再通过 `repaper submission show <投稿ID> --json` 读取某一轮的完整审稿内容与原始材料路径。项目 `AGENTS.md` 记录这套读取顺序，不静态复制投稿数据；尚未从旧版界面迁入的投稿不会出现在 CLI 时间线中。
+
 全局“设置”页用一个下拉框选择“自动审批”或“完全访问”，同时应用于 Codex 和 Claude Code；该选项用于之后启动或恢复的终端，运行中的终端继续使用原权限。Codex 分别使用 `--approve-for-me` 与 `--dangerously-bypass-approvals-and-sandbox`，Claude Code 分别使用 `--permission-mode auto` 与 `--permission-mode bypassPermissions`。
 
 ```bash
+repaper submission timeline --json
 repaper submission list --json
 repaper submission show <投稿ID> --json
 repaper submission create --file submission.json

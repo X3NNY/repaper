@@ -11,6 +11,7 @@ import { ensureProjectInstructions } from '../electron/main/projectSetup'
 import { WritingWorkspaceManager } from '../electron/main/writing'
 import { loadSubmissions, saveSubmission, saveSubmissionEvent } from '../electron/main/submissions'
 import type { ExperimentOverviewDraft, ExperimentResultBlock, ExperimentSetting } from '../shared/experiments'
+import { submissionEventSortKey } from '../shared/submissions'
 import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/submissions'
 
 const HELP = `re:paper 项目命令
@@ -18,6 +19,7 @@ const HELP = `re:paper 项目命令
   repaper init [--paper <目录>]
   repaper writing import <LaTeX主文件> [--paper <目录>]
   repaper submission list [--json]
+  repaper submission timeline [--json]
   repaper submission show <投稿ID> [--json]
   repaper submission create --file <投稿JSON>
   repaper submission update <投稿ID> --file <投稿JSON>
@@ -36,7 +38,8 @@ const HELP = `re:paper 项目命令
   repaper show <组|组/实验|运行ID> [--json] [--log]
 
 所有命令都可使用 --paper <论文目录>。标识使用小写字母、数字和连字符。
-在 re:paper 的内嵌会话中，论文目录会自动提供给命令。`
+在 re:paper 的内嵌会话中，论文目录会自动提供给命令。
+投稿 timeline 仅读取 .repaper/submissions/；旧工作区投稿需在界面点击“继续记录”迁入。`
 
 interface Parsed { positionals: string[]; flags: Map<string, string[]>; rest: string[] }
 
@@ -106,6 +109,13 @@ function output(value: unknown, json: boolean): void {
   if (json) process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
   else if (typeof value === 'string') process.stdout.write(`${value}\n`)
   else process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+}
+
+function compactPreview(value: string, maxLength = 180): string {
+  const characters = Array.from(value.replace(/\s+/g, ' ').trim())
+  return characters.length > maxLength
+    ? `${characters.slice(0, maxLength - 1).join('')}…`
+    : characters.join('')
 }
 
 function extractPaper(args: string[]): { paper: string | undefined; args: string[] } {
@@ -178,6 +188,45 @@ async function main(): Promise<void> {
   }
   if (command === 'submission') {
     const verb = args.shift()
+    if (verb === 'timeline') {
+      if (args.some((arg) => arg !== '--json')) throw new Error('用法：repaper submission timeline [--json]')
+      const state = await loadSubmissions(root)
+      const attempts = [...state.attempts]
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt) || b.createdAt.localeCompare(a.createdAt))
+        .map((attempt) => ({
+          id: attempt.id,
+          venue: attempt.venue,
+          track: attempt.track,
+          submittedAt: attempt.submittedAt,
+          versionLabel: attempt.versionLabel,
+          gitCommit: attempt.gitCommit,
+          previousSubmissionId: attempt.previousSubmissionId,
+          events: state.events.filter((event) => event.submissionId === attempt.id)
+            .sort((a, b) => submissionEventSortKey(b).localeCompare(submissionEventSortKey(a)) || b.createdAt.localeCompare(a.createdAt))
+            .map((event) => ({
+              id: event.id,
+              kind: event.kind,
+              occurredAt: event.occurredAt,
+              title: event.title,
+              decision: event.decision,
+              rawDecision: event.rawDecision,
+              summaryPreview: compactPreview(event.summary),
+              reviewCount: event.reviews.length,
+              sourceCount: event.sources.length
+            }))
+        }))
+      if (args.includes('--json')) output({ attempts }, true)
+      else output(attempts.flatMap((attempt) => [
+        `${attempt.submittedAt} · ${attempt.venue}${attempt.track ? ` / ${attempt.track}` : ''} · ${attempt.id}`,
+        `  版本：${attempt.versionLabel || '未记录'} · Git：${attempt.gitCommit || '未记录'} · 上一轮：${attempt.previousSubmissionId || '无'}`,
+        ...(attempt.events.length ? attempt.events.flatMap((event) => [
+          `  - ${event.occurredAt || '日期未记录'} · ${event.kind} · ${event.title || event.id}${event.decision ? ` · ${event.decision}` : ''} · 审稿 ${event.reviewCount} · 材料 ${event.sourceCount} · ${event.id}`,
+          ...(event.rawDecision ? [`    编辑原话：${compactPreview(event.rawDecision)}`] : []),
+          ...(event.summaryPreview ? [`    概述：${event.summaryPreview}`] : [])
+        ]) : ['  - 暂无进展'])
+      ]).join('\n') || '暂无投稿记录。', false)
+      return
+    }
     if (verb === 'list') {
       if (args.some((arg) => arg !== '--json')) throw new Error('用法：repaper submission list [--json]')
       const state = await loadSubmissions(root)
@@ -210,7 +259,7 @@ async function main(): Promise<void> {
       output(`已保存投稿事件 ${event.id} · ${event.kind}`, false)
       return
     }
-    throw new Error('用法：repaper submission list|show|create|update|event ...')
+    throw new Error('用法：repaper submission list|timeline|show|create|update|event ...')
   }
   if (command === 'status') {
     const json = args.includes('--json')

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
+import { lstat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
 import type { AgentPermissionMode, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
@@ -7,6 +8,7 @@ import { CodexBridge, sameDirectory } from './codexBridge'
 import { findCodexExecutable } from './codexExecutable'
 import { findClaudeCommand } from './claudeExecutable'
 import { ClaudeSessions } from './claudeSessions'
+import { ensureProjectInstructions } from './projectSetup'
 import { withCliPath } from './skillInstaller'
 
 const MAX_OUTPUT = 8_000_000
@@ -88,6 +90,12 @@ export class SessionTerminalManager {
     if ([...this.sessions.values()].filter((session) => session.running).length >= MAX_TERMINALS) {
       throw new Error('最多同时运行 8 个会话终端，请先关闭一个。')
     }
+    const marker = await lstat(join(folderPath, '.repaper', 'project.json')).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null
+      throw error
+    })
+    const hasProject = Boolean(marker?.isFile() && !marker.isSymbolicLink())
+    if (hasProject) await ensureProjectInstructions(folderPath)
 
     let executable: string
     let args: string[]
@@ -104,6 +112,7 @@ export class SessionTerminalManager {
       executable = command.executable
       args = [
         ...command.argsPrefix,
+        ...(hasProject ? ['--append-system-prompt', 'This is a re:paper workspace. Read AGENTS.md in the current working directory before answering questions about this project. Use the read-only submission timeline and show commands described there to fetch current submission history and review content.'] : []),
         '--permission-mode', permissionMode === 'full_access' ? 'bypassPermissions' : 'auto',
         ...(sessionId ? createWithId ? ['--session-id', sessionId] : ['--resume', sessionId] : [])
       ]
