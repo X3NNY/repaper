@@ -88,16 +88,18 @@ repaper status --json
 
 ### 1. 下载安装应用 (推荐)
 
-当前可下载 [👉 v0.1.0 预发布版](https://github.com/X3NNY/repaper/releases/tag/v0.1.0)，或前往 [全部 Releases](https://github.com/X3NNY/repaper/releases) 查看其他版本。请按系统和 CPU 架构选择安装包，也可以使用下方源码启动方式。
+当前可下载 [👉 v0.1.1](https://github.com/X3NNY/repaper/releases/tag/v0.1.1)，或前往 [全部 Releases](https://github.com/X3NNY/repaper/releases) 查看其他版本。请按系统和 CPU 架构选择安装包，也可以使用下方源码启动方式。
 
 | 操作系统 | 下载文件 | 说明 |
 | --- | --- | --- |
 | **Windows x64** | `repaper-x.x.x-win-x64.exe` | NSIS 安装包 |
+| **Windows ARM64** | `repaper-x.x.x-win-arm64.exe` | NSIS 安装包 |
 | **macOS Intel** | `repaper-x.x.x-mac-x64.dmg` | Intel 版本 |
 | **macOS Apple Silicon** | `repaper-x.x.x-mac-arm64.dmg` | Apple Silicon 版本 |
-| **Linux x64** | `repaper-x.x.x-linux-x86_64.AppImage` / `repaper-x.x.x-linux-x64.tar.gz` | AppImage 或解压运行 |
+| **Linux x64** | `repaper-x.x.x-linux-x86_64.AppImage` / `repaper-x.x.x-linux-x64.tar.gz` / `repaper-x.x.x-linux-amd64.deb` / `repaper-x.x.x-linux-x86_64.rpm` | AppImage、解压包、DEB 或 RPM |
+| **Linux ARM64** | `repaper-x.x.x-linux-arm64.AppImage` / `repaper-x.x.x-linux-arm64.tar.gz` / `repaper-x.x.x-linux-arm64.deb` / `repaper-x.x.x-linux-aarch64.rpm` | AppImage、解压包、DEB 或 RPM |
 
-发布流程已加入 Windows ARM64 和 Linux ARM64，并为 Linux 两种架构增加 DEB、RPM 包；macOS 仅构建 DMG。以上变更随下一版本提供，现有 v0.1.0 保持不变。
+v0.1.1 起提供 Windows ARM64、Linux ARM64，以及 Linux DEB 和 RPM 包；macOS 提供 DMG。现有 v0.1.0 安装包保持不变。
 
 当前 Windows 包未使用发行商证书，macOS 包采用 ad-hoc 签名，尚未 notarize。系统可能显示安装安全提示；详情见[签名与安装说明](docs/releases.md#签名与安装提示)。
 

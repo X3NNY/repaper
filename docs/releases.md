@@ -13,7 +13,7 @@ re:paper 使用 electron-vite 编译代码、electron-builder 生成桌面安装
 
 每个 Release 草稿包含十二个安装包或压缩包、`SHA256SUMS.txt` 校验文件和 MIT `LICENSE`。CLI、Agent Skill 和 Electron 运行环境会随应用打包；Git、TeX、Codex / Claude Code 和实验环境由用户按需安装。
 
-Windows ARM64 和 Linux ARM64 从下一版本开始提供；现有 v0.1.0 不包含这两种安装包。新增目标需通过对应原生 runner 的构建及打包检查后才会进入 Release 草稿。
+Windows ARM64 和 Linux ARM64 从 v0.1.1 开始提供；v0.1.0 不包含这两种安装包。新增目标需通过对应原生 runner 的构建及打包检查后才会进入 Release 草稿。
 
 ## 本地打包
 
@@ -105,7 +105,7 @@ Linux 文件名的架构后缀随格式不同：
 | DEB | `amd64` | `arm64` |
 | RPM | `x86_64` | `aarch64` |
 
-发布脚本会校验全部十二个产物，并拒绝混入旧 ZIP 包。DEB 面向 Debian / Ubuntu，RPM 面向 Fedora / RHEL 系；CI 已安装 RPM 打包工具。macOS 从下一版本开始仅提供 DMG，已有公开 Release 保持不变。
+发布脚本会校验全部十二个产物，并拒绝混入旧 ZIP 包。DEB 面向 Debian / Ubuntu，RPM 面向 Fedora / RHEL 系；CI 已安装 RPM 打包工具。macOS 从 v0.1.1 开始仅提供 DMG，已有公开 Release 保持不变。
 
 ## 签名与安装提示
 
