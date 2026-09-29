@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline'
 import type { CodexThreadPage, CodexThreadSummary } from '../../shared/codex'
 import { findCodexExecutable } from './codexExecutable'
 
+
 type JsonObject = Record<string, unknown>
 
 function object(value: unknown): JsonObject {
@@ -129,7 +130,7 @@ export class CodexBridge {
       cursor: cursor || null,
       limit: 30,
       sortKey: 'recency_at',
-      sourceKinds: ['cli', 'vscode', 'appServer', 'unknown'],
+      sourceKinds: ['cli', 'exec', 'vscode', 'appServer', 'unknown'],
       useStateDbOnly: !scanAll
     }, 90_000))
     return {

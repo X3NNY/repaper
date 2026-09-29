@@ -2,18 +2,20 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowLeft, ArrowRight, BookOpenText, Check, ChevronRight,
   CircleAlert, FileText, FlaskConical, FolderKanban, FolderOpen,
-  LayoutDashboard, ListFilter, Plus, Search, Settings2, Sparkles,
+  LayoutDashboard, ListFilter, Plus, Search, Send, Settings2, Sparkles,
   TerminalSquare, Trash2, X, type LucideIcon
 } from 'lucide-react'
 import type {
   Implementation, Paper, PaperStatus, ResearchRoute, Revision, Submission,
   WorkspaceData
 } from '../shared/model'
-import type { SessionProvider } from '../shared/sessions'
+import type { AgentPermissionMode, SessionProvider } from '../shared/sessions'
+import type { SubmissionAgentLaunch, SubmissionEvent } from '../shared/submissions'
 import EditorDialog, { type DialogState } from './components/EditorDialog'
 import SessionsPanel from './components/SessionsPanel'
 import WritingPanel from './components/WritingPanel'
 import ExperimentsPanel from './components/ExperimentsPanel'
+import SubmissionsPanel from './components/SubmissionsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
   createId, createSamplePaper, formatDate, loadWorkspace, mostRecentPaper,
@@ -21,14 +23,15 @@ import {
 } from './lib/workspace'
 
 type View = { kind: 'dashboard' } | { kind: 'library' } | { kind: 'settings' } | { kind: 'paper'; id: string }
-type PaperTab = 'overview' | 'sessions' | 'writing' | 'experiments'
+type PaperTab = 'overview' | 'sessions' | 'writing' | 'experiments' | 'submissions'
 type SaveState = 'saved' | 'saving' | 'error'
 
 const tabs: { id: PaperTab; label: string; detail: string; icon: LucideIcon }[] = [
   { id: 'overview', label: '概况', detail: '论文信息与工作入口', icon: LayoutDashboard },
   { id: 'sessions', label: '会话', detail: 'Codex · Claude Code', icon: TerminalSquare },
   { id: 'writing', label: '写作', detail: '.paper/ · 编译与版本', icon: FileText },
-  { id: 'experiments', label: '实验', detail: '实验组与运行记录', icon: FlaskConical }
+  { id: 'experiments', label: '实验', detail: '实验组与运行记录', icon: FlaskConical },
+  { id: 'submissions', label: '投稿', detail: '投稿历程与审稿材料', icon: Send }
 ]
 
 function field(form: FormData, key: string): string {
@@ -125,6 +128,8 @@ export default function App() {
 
   const papers = workspace?.papers ?? []
   const defaultAgent: SessionProvider = workspace?.defaultAgent === 'claude' ? 'claude' : 'codex'
+  const agentPermissionMode: AgentPermissionMode = (workspace?.agentPermissionMode ?? workspace?.agentPermissionModes?.[defaultAgent]) === 'full_access'
+    ? 'full_access' : 'auto_approve'
   const sortedPapers = mostRecentPaper(papers)
   const selectedPaper = view.kind === 'paper' ? papers.find((paper) => paper.id === view.id) : undefined
   const paperFolderName = selectedPaper?.folderPath?.split(/[\\/]/).filter(Boolean).at(-1)
@@ -303,16 +308,16 @@ export default function App() {
 
         {saveState === 'error' ? <div className="save-banner"><CircleAlert size={17} /> 自动保存失败：{saveError}<button onClick={() => setSaveRetry((value) => value + 1)}>重试保存</button></div> : null}
 
-        <div className={`page-content ${selectedPaper ? 'paper-page' : ''} ${selectedPaper && tab === 'sessions' ? 'sessions-page' : ''} ${selectedPaper && tab === 'writing' ? 'writing-page' : ''} ${selectedPaper && tab === 'experiments' ? 'experiments-page' : ''}`} key={view.kind === 'paper' ? view.id : view.kind}>
+        <div className={`page-content ${selectedPaper ? 'paper-page' : ''} ${selectedPaper && tab === 'sessions' ? 'sessions-page' : ''} ${selectedPaper && tab === 'writing' ? 'writing-page' : ''} ${selectedPaper && tab === 'experiments' ? 'experiments-page' : ''} ${selectedPaper && tab === 'submissions' ? 'submissions-page' : ''}`} key={view.kind === 'paper' ? view.id : view.kind}>
           {view.kind === 'dashboard' ? (
             <Dashboard papers={sortedPapers} onCreate={() => setDialog({ kind: 'paper' })} onSample={addSample} onOpen={showPaper} onLibrary={showLibrary} />
           ) : null}
           {view.kind === 'library' ? (
             <Library papers={sortedPapers} query={query} filter={filter} onFilter={setFilter} onCreate={() => setDialog({ kind: 'paper' })} onOpen={showPaper} onSample={addSample} />
           ) : null}
-          {view.kind === 'settings' ? <SettingsPanel toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} onDefaultAgentChange={(provider) => setWorkspace((current) => current && ({ ...current, defaultAgent: provider }))} /> : null}
+          {view.kind === 'settings' ? <SettingsPanel toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} onDefaultAgentChange={(provider) => setWorkspace((current) => current && ({ ...current, defaultAgent: provider, agentPermissionMode }))} permissionMode={agentPermissionMode} onPermissionModeChange={(mode) => setWorkspace((current) => current && ({ ...current, agentPermissionMode: mode }))} /> : null}
           {view.kind === 'paper' && selectedPaper ? (
-            <PaperDetail paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} />
+            <PaperDetail paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={agentPermissionMode} />
           ) : null}
           {view.kind === 'paper' && !selectedPaper ? <EmptySection icon={<FileText size={26} />} title="找不到这篇论文" description="它可能已经被删除。" action={<button className="button button-primary" onClick={showLibrary}>返回全部论文</button>} /> : null}
         </div>
@@ -390,15 +395,32 @@ function Library({ papers, query, filter, onFilter, onCreate, onOpen, onSample }
   </>
 }
 
-function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget, defaultAgent }: {
+function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget, defaultAgent, permissionMode }: {
   paper: Paper; tab: PaperTab; onTab: (tab: PaperTab) => void;
-  onEdit: () => void; onDelete: () => void; toolbarTarget: HTMLDivElement | null; defaultAgent: SessionProvider
+  onEdit: () => void; onDelete: () => void; toolbarTarget: HTMLDivElement | null; defaultAgent: SessionProvider;
+  permissionMode: AgentPermissionMode
 }) {
+  const [agentLaunch, setAgentLaunch] = useState<SubmissionAgentLaunch | null>(null)
+
+  async function organizeSubmission(event: SubmissionEvent): Promise<void> {
+    if (!paper.folderPath || !window.paperApi) throw new Error('请先关联论文工作目录并在桌面应用中使用 Agent。')
+    if (typeof window.paperApi.submissionsAgentOpen !== 'function') throw new Error('当前窗口尚未加载投稿 Agent 功能，请重启 re:paper。')
+    if (typeof window.paperApi.submissionsAgentCapabilities !== 'function' ||
+        !(await window.paperApi.submissionsAgentCapabilities().catch(() => null))?.verbatimReviews) {
+      throw new Error('当前窗口仍使用旧版投稿整理指令。请完成正在运行的 Agent 会话后重启 re:paper，再继续整理审稿原文。')
+    }
+    const provider = event.agentSession?.provider ?? defaultAgent
+    const launch = await window.paperApi.submissionsAgentOpen(paper.folderPath, event.id, provider, permissionMode)
+    setAgentLaunch(launch)
+    onTab('sessions')
+  }
+
   return <>
     {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
-    {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} /> : null}
+    {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={permissionMode} focusTerminalId={agentLaunch?.terminalId ?? null} /> : null}
     {tab === 'writing' ? <WritingPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
     {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
+    {tab === 'submissions' ? <SubmissionsPanel paper={paper} onChooseFolder={onEdit} onOpenSessions={() => onTab('sessions')} onOrganize={organizeSubmission} toolbarTarget={toolbarTarget} /> : null}
     {tab === 'overview' ? <PaperOverview paper={paper} onTab={onTab} /> : null}
   </>
 }
@@ -420,6 +442,10 @@ function PaperOverview({ paper, onTab }: { paper: Paper; onTab: (tab: PaperTab) 
       <section className="surface-panel">
         <SectionTitle eyebrow="EXPERIMENTS" title="实验" detail="按实验组整理问题和运行记录。" action={<button className="link-button" onClick={() => onTab('experiments')}>查看实验 <ArrowRight size={16} /></button>} />
         <div className="overview-writing-path"><FlaskConical size={20} /><span><strong>{paper.folderPath ? '.repaper/experiments/' : '尚未关联工作目录'}</strong><small>Agent 运行命令后自动更新实验记录</small></span></div>
+      </section>
+      <section className="surface-panel">
+        <SectionTitle eyebrow="SUBMISSIONS" title="投稿" detail="追踪投稿、审稿决定与修订版本。" action={<button className="link-button" onClick={() => onTab('submissions')}>查看投稿 <ArrowRight size={16} /></button>} />
+        <div className="overview-writing-path"><Send size={20} /><span><strong>{paper.folderPath ? '.repaper/submissions/' : '尚未关联工作目录'}</strong><small>按时间线查看审稿与编辑结论</small></span></div>
       </section>
     </aside>
   </div>

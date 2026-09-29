@@ -2,7 +2,7 @@
 name: repaper-experiments
 description: Record and maintain experiments for a re:paper project while running research code. Use when a paper workspace has .repaper/project.json and work involves evaluations, benchmarks, ablations, or result comparisons.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # re:paper experiments

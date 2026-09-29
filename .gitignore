@@ -13,3 +13,4 @@ dist/
 *.pfx
 release-assets/
 tmp/
+.codex-tmp/

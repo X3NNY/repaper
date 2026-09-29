@@ -32,7 +32,7 @@
 | **AI 会话难以溯源** | **原生 AI 会话集成**：按项目绑定并继续 Codex / Claude Code 会话，内置终端协同。 |
 | **实验记录繁琐无序** | **自动实验追踪**：三层管理（实验组 → 实验 → 运行），自动记录命令、日志、指标与 Git 状态。 |
 | **写作与代码脱节** | **LaTeX 集成管理**：集成 LaTeX 编辑、PDF 实时预览、 Git 差异对比与版本历史。 |
-| **投稿修改乱成一团** | **投稿全流程跟进**：管理投稿轮次、重投关联、修改任务列表、进度及 Cutoff 截止日期。 |
+| **投稿修改乱成一团** | **投稿时间线**：选择状态、粘贴邮件／链接／图片，按时间倒序查看审稿与修订；继续补充同一进展时会在关联的 Agent 会话中自动发送整理指令。 |
 
 ---
 
@@ -122,8 +122,9 @@ re:paper 坚持 **Local-First（本地优先）** 理念，你的所有科研数
 
 | 数据内容 | 保存位置 |
 | --- | --- |
-| **论文项目 / 路线 / 投稿任务** | `%APPDATA%\repaper\workspace.json`（Windows 默认） |
+| **论文项目 / 路线 / 旧版投稿记录** | `%APPDATA%\repaper\workspace.json`（Windows 默认） |
 | **实验记录与运行日志** | 对应论文工作目录中的 `.repaper/experiments/` |
+| **投稿历程与原始材料** | 对应论文工作目录中的 `.repaper/submissions/` |
 | **LaTeX 手稿与写作 Git 历史** | 对应论文工作目录中的 `.paper/` |
 | **PDF 编译产物** | 对应论文工作目录中的 `.paper/.build/`（默认不计入 Git 提交） |
 | **AI 会话历史** | 各 AI 工具（Codex/Claude Code）原有的本地数据目录 |
@@ -175,6 +176,7 @@ repaper/
 ├── shared/                      # 前后端共享数据类型
 ├── cli/                         # repaper CLI 工具源码
 ├── skills/repaper-experiments/  # Agent 实验记录 Skill
+├── skills/repaper-submissions/  # Agent 投稿材料整理 Skill
 └── tests/                       # 单元测试与界面检查脚本
 
 ```

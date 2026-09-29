@@ -1,19 +1,20 @@
-import { emptyWorkspace, isWorkspaceData, type Paper, type WorkspaceData } from '../../shared/model'
+import { emptyWorkspace, isWorkspaceData, normalizeWorkspaceData, type Paper, type WorkspaceData } from '../../shared/model'
 
 const browserStorageKey = 'repaper.workspace.v1'
 
 export async function loadWorkspace(): Promise<WorkspaceData> {
-  if (window.paperApi) return window.paperApi.loadWorkspace()
+  if (window.paperApi) return normalizeWorkspaceData(await window.paperApi.loadWorkspace())
   const stored = localStorage.getItem(browserStorageKey)
   if (!stored) return emptyWorkspace()
   const parsed: unknown = JSON.parse(stored)
   if (!isWorkspaceData(parsed)) throw new Error('本地数据格式不受支持。')
-  return parsed
+  return normalizeWorkspaceData(parsed)
 }
 
 export async function saveWorkspace(workspace: WorkspaceData): Promise<void> {
-  if (window.paperApi) return window.paperApi.saveWorkspace(workspace)
-  localStorage.setItem(browserStorageKey, JSON.stringify(workspace))
+  const normalized = normalizeWorkspaceData(workspace)
+  if (window.paperApi) return window.paperApi.saveWorkspace(normalized)
+  localStorage.setItem(browserStorageKey, JSON.stringify(normalized))
 }
 
 export async function chooseFile(): Promise<string | null> {

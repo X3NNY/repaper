@@ -9,12 +9,20 @@ import {
 } from '../electron/main/experiments'
 import { ensureProjectInstructions } from '../electron/main/projectSetup'
 import { WritingWorkspaceManager } from '../electron/main/writing'
+import { loadSubmissions, saveSubmission, saveSubmissionEvent } from '../electron/main/submissions'
 import type { ExperimentOverviewDraft, ExperimentResultBlock, ExperimentSetting } from '../shared/experiments'
+import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/submissions'
 
 const HELP = `re:paper 项目命令
 
   repaper init [--paper <目录>]
   repaper writing import <LaTeX主文件> [--paper <目录>]
+  repaper submission list [--json]
+  repaper submission show <投稿ID> [--json]
+  repaper submission create --file <投稿JSON>
+  repaper submission update <投稿ID> --file <投稿JSON>
+  repaper submission event <投稿ID> --file <事件JSON> [--id <事件ID>]
+    事件JSON的 reviews 可包含 rawScore、rawText，逐字保存审稿评分和正文
   repaper status [--json]
   repaper group ensure <key> --title <标题> [--goal <目标>] [--route <路线ID>] [--metric <名称:max|min>] [--config <公共配置>]
   repaper experiment ensure <组>/<key> --title <标题> [--subtitle <副标题>] [--design <设计原因>] [--setting <名称=关键设置> ...]
@@ -167,6 +175,42 @@ async function main(): Promise<void> {
     const state = await new WritingWorkspaceManager().importSource(root, resolve(root, parsed.positionals[0]))
     output(`已导入写作目录 ${state.rootPath} · ${state.files.length} 个顶层文件或目录。`, false)
     return
+  }
+  if (command === 'submission') {
+    const verb = args.shift()
+    if (verb === 'list') {
+      if (args.some((arg) => arg !== '--json')) throw new Error('用法：repaper submission list [--json]')
+      const state = await loadSubmissions(root)
+      output(args.includes('--json') ? state : state.attempts.map((item) => `${item.id} · ${item.submittedAt} · ${item.venue} · ${item.versionLabel || item.gitCommit}`).join('\n') || '暂无投稿记录。', args.includes('--json'))
+      return
+    }
+    if (verb === 'show') {
+      const id = args.find((arg) => arg !== '--json')
+      if (!id || args.filter((arg) => arg !== '--json').length !== 1) throw new Error('用法：repaper submission show <投稿ID> [--json]')
+      const state = await loadSubmissions(root)
+      const attempt = state.attempts.find((item) => item.id === id)
+      if (!attempt) throw new Error('投稿记录不存在。')
+      output({ attempt, events: state.events.filter((item) => item.submissionId === id) }, args.includes('--json'))
+      return
+    }
+    if (verb === 'create' || verb === 'update') {
+      const parsed = parse(args, ['file'])
+      const id = verb === 'update' ? parsed.positionals[0] : undefined
+      if (parsed.positionals.length !== (verb === 'update' ? 1 : 0)) throw new Error(`用法：repaper submission ${verb} ${verb === 'update' ? '<投稿ID> ' : ''}--file <投稿JSON>`)
+      const draft = await projectJsonFile(root, requireArgument(one(parsed, 'file'), 'repaper submission create --file <投稿JSON>')) as SubmissionAttemptDraft
+      const attempt = await saveSubmission(root, draft, id)
+      output(`已保存投稿 ${attempt.id} · ${attempt.venue}`, false)
+      return
+    }
+    if (verb === 'event') {
+      const parsed = parse(args, ['file', 'id'])
+      if (parsed.positionals.length !== 1) throw new Error('用法：repaper submission event <投稿ID> --file <事件JSON> [--id <事件ID>]')
+      const draft = await projectJsonFile(root, requireArgument(one(parsed, 'file'), 'repaper submission event <投稿ID> --file <事件JSON>')) as SubmissionEventDraft
+      const event = await saveSubmissionEvent(root, parsed.positionals[0], draft, one(parsed, 'id'))
+      output(`已保存投稿事件 ${event.id} · ${event.kind}`, false)
+      return
+    }
+    throw new Error('用法：repaper submission list|show|create|update|event ...')
   }
   if (command === 'status') {
     const json = args.includes('--json')

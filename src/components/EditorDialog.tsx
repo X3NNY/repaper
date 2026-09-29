@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { FolderOpen, X } from 'lucide-react'
 import type { Paper } from '../../shared/model'
 import { chooseFolder, paperStatusLabels, routeStatusLabels, implementationStatusLabels, submissionStatusLabels, revisionStatusLabels, today } from '../lib/workspace'
+import SelectField from './SelectField'
 
 export type DialogState =
   | { kind: 'paper'; paperId?: string }
@@ -35,8 +36,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-function Options({ values }: { values: Record<string, string> }) {
-  return Object.entries(values).map(([value, label]) => <option key={value} value={value}>{label}</option>)
+function labelOptions(values: Record<string, string>) {
+  return Object.entries(values).map(([value, label]) => ({ value, label }))
 }
 
 export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) {
@@ -116,7 +117,7 @@ export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) 
                       <input name="shortName" placeholder="便于快速识别" defaultValue={paper?.shortName ?? ''} />
                     </Field>
                     <Field label="当前阶段">
-                      <select name="status" defaultValue={paper?.status ?? 'idea'}><Options values={paperStatusLabels} /></select>
+                      <SelectField name="status" defaultValue={paper?.status ?? 'idea'} options={labelOptions(paperStatusLabels)} />
                     </Field>
                   </div>
                   <Field label="项目简介">
@@ -139,7 +140,7 @@ export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) 
                 <textarea name="objective" rows={4} placeholder="这条路线想解决什么，和其他路线有什么区别？" defaultValue={record && 'objective' in record ? record.objective : ''} />
               </Field>
               <Field label="状态">
-                <select name="status" defaultValue={record && 'status' in record ? record.status : 'exploring'}><Options values={routeStatusLabels} /></select>
+                <SelectField name="status" defaultValue={record && 'status' in record ? record.status : 'exploring'} options={labelOptions(routeStatusLabels)} />
               </Field>
             </>
           ) : null}
@@ -155,7 +156,7 @@ export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) 
               </Field>
               <div className="form-row">
                 <Field label="状态">
-                  <select name="status" defaultValue={record && 'status' in record ? record.status : 'planned'}><Options values={implementationStatusLabels} /></select>
+                  <SelectField name="status" defaultValue={record && 'status' in record ? record.status : 'planned'} options={labelOptions(implementationStatusLabels)} />
                 </Field>
                 <Field label="代码路径 / 仓库链接">
                   <input name="repositoryPath" placeholder="可选" defaultValue={record && 'repositoryPath' in record ? record.repositoryPath : ''} />
@@ -176,20 +177,25 @@ export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) 
               </div>
               <div className="form-row">
                 <Field label="当前结果">
-                  <select name="status" defaultValue={record && 'status' in record ? record.status : 'under_review'}><Options values={submissionStatusLabels} /></select>
+                  <SelectField name="status" defaultValue={record && 'status' in record ? record.status : 'under_review'} options={labelOptions(submissionStatusLabels)} />
                 </Field>
                 {record && 'versionId' in record && record.versionId && paper?.versions.some((item) => item.id === record.versionId) ? <Field label="旧版写作记录" hint="保留已有投稿与旧记录的关联。新写作版本请在“写作”中记录。">
-                  <select name="versionId" defaultValue={record && 'versionId' in record ? record.versionId : ''}>
-                    <option value="">暂不关联</option>
-                    {paper?.versions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                  </select>
+                  <SelectField
+                    name="versionId"
+                    defaultValue={record && 'versionId' in record ? record.versionId : ''}
+                    options={[{ value: '', label: '暂不关联' }, ...(paper?.versions.map((item) => ({ value: item.id, label: item.label })) ?? [])]}
+                  />
                 </Field> : null}
               </div>
               <Field label="关联上一轮投稿" hint="重投时选择上一轮，便于追溯投稿路径。">
-                <select name="previousSubmissionId" defaultValue={record && 'previousSubmissionId' in record ? record.previousSubmissionId : ''}>
-                  <option value="">首次投稿 / 不关联</option>
-                  {paper?.submissions.filter((item) => item.id !== dialog.recordId).map((item) => <option key={item.id} value={item.id}>{item.venue} · {item.submittedAt}</option>)}
-                </select>
+                <SelectField
+                  name="previousSubmissionId"
+                  defaultValue={record && 'previousSubmissionId' in record ? record.previousSubmissionId : ''}
+                  options={[
+                    { value: '', label: '首次投稿 / 不关联' },
+                    ...(paper?.submissions.filter((item) => item.id !== dialog.recordId).map((item) => ({ value: item.id, label: `${item.venue} · ${item.submittedAt}` })) ?? [])
+                  ]}
+                />
               </Field>
               <Field label="审稿意见 / 备注">
                 <textarea name="notes" rows={4} placeholder="记录结果、意见和下一步" defaultValue={record && 'notes' in record ? record.notes : ''} />
@@ -207,17 +213,21 @@ export default function EditorDialog({ dialog, paper, onClose, onSave }: Props) 
               </Field>
               <div className="form-row">
                 <Field label="状态">
-                  <select name="status" defaultValue={record && 'status' in record ? record.status : 'todo'}><Options values={revisionStatusLabels} /></select>
+                  <SelectField name="status" defaultValue={record && 'status' in record ? record.status : 'todo'} options={labelOptions(revisionStatusLabels)} />
                 </Field>
                 <Field label="截止日期">
                   <input name="dueDate" type="date" defaultValue={record && 'dueDate' in record ? record.dueDate : ''} />
                 </Field>
               </div>
               <Field label="关联投稿轮次">
-                <select name="submissionId" defaultValue={record && 'submissionId' in record ? record.submissionId : ''}>
-                  <option value="">暂不关联</option>
-                  {paper?.submissions.map((item) => <option key={item.id} value={item.id}>{item.venue} · {item.submittedAt}</option>)}
-                </select>
+                <SelectField
+                  name="submissionId"
+                  defaultValue={record && 'submissionId' in record ? record.submissionId : ''}
+                  options={[
+                    { value: '', label: '暂不关联' },
+                    ...(paper?.submissions.map((item) => ({ value: item.id, label: `${item.venue} · ${item.submittedAt}` })) ?? [])
+                  ]}
+                />
               </Field>
             </>
           ) : null}

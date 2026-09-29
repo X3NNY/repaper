@@ -2,7 +2,7 @@
 name: repaper-init
 description: Initialize a local paper directory for re:paper, including adoption of existing LaTeX sources and historical experiment evidence. Use when a user links a new or populated research folder to re:paper, not for ordinary experiment runs.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Initialize a re:paper workspace

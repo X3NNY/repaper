@@ -1,0 +1,20 @@
+.select-field { display: block; width: 100%; min-width: 0; }
+.select-field-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; min-height: 39px; padding: 8px 11px; border: 1px solid #dfe8dd; border-radius: 7px; background: #fbfcfa; color: #344e3a; text-align: left; font: 500 12px/1.45 'DM Sans', 'Microsoft YaHei UI', sans-serif; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.select-field-trigger:hover:not(:disabled) { border-color: #a3c1a6; background: #fff; }
+.select-field-trigger.is-open { border-color: #76a883; background: #fff; box-shadow: 0 0 0 3px #9bc4a22c; }
+.select-field-trigger:focus-visible { outline: 3px solid #a5c2b0; outline-offset: 2px; }
+.select-field-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.select-field-value { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-field-value.is-placeholder { color: #9baa9c; }
+.select-field-chevron { flex: 0 0 auto; color: #658f70; transition: transform .15s ease; }
+.select-field-chevron.is-open { transform: rotate(180deg); }
+.select-field-menu { position: fixed; z-index: 1000; overflow-x: hidden; overflow-y: hidden; padding: 4px; border: 1px solid #d6e3d4; border-radius: 9px; background: #fff; box-shadow: 0 12px 34px #183b2a24, 0 2px 7px #183b2a0d; overscroll-behavior: contain; }
+.select-field-menu.is-scrollable { overflow-y: auto; }
+.select-field-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 7px 9px; border-radius: 5px; color: #405846; cursor: pointer; font: 500 12px/1.4 'DM Sans', 'Microsoft YaHei UI', sans-serif; }
+.select-field-option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-field-option > svg { flex: 0 0 auto; color: #388158; }
+.select-field-option.is-active { background: #edf5eb; color: #245d3c; }
+.select-field-option.is-selected { font-weight: 700; }
+.select-field-option[aria-disabled="true"] { color: #a9b6a9; cursor: not-allowed; }
+.select-field-option[aria-disabled="true"].is-active { background: transparent; }
+.select-field-empty { padding: 10px; color: #94a396; font-size: 12px; }

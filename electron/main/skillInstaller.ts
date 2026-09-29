@@ -1,11 +1,12 @@
 import { app } from 'electron'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { chmod, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import type { SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 
-const SKILL_NAMES = ['repaper-experiments', 'repaper-init'] as const
+const SKILL_NAMES = ['repaper-experiments', 'repaper-init', 'repaper-submissions'] as const
+const submissionInstalls = new Map<SkillProvider, Promise<string>>()
 
 const applicationRoot = resolve(__dirname, '../..')
 function sourceSkillPath(name: string): string {
@@ -107,11 +108,46 @@ export async function installSkill(provider: SkillProvider): Promise<SkillInstal
   return skillStatuses()
 }
 
+async function ensureSubmissionSkillNow(provider: SkillProvider): Promise<string> {
+  const name = 'repaper-submissions'
+  const source = await readFile(sourceSkillPath(name))
+  const availableVersion = versionOf(source.toString('utf8'))
+  if (!availableVersion) throw new Error('内置投稿 SKILL 缺少有效版本号。')
+  const directory = destination(provider, name)
+  const path = join(directory, 'SKILL.md')
+  const current = await readFile(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null
+    throw error
+  })
+  if (current && hash(current) === hash(source)) return path
+  const installedVersion = current && versionOf(current.toString('utf8'))
+  if (installedVersion && compareVersions(installedVersion, availableVersion) > 0) return path
+  await mkdir(directory, { recursive: true })
+  if (current) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    await copyFile(path, join(directory, `SKILL.md.backup-${timestamp}-${randomUUID()}`))
+  }
+  await writeFile(path, source)
+  return path
+}
+
+export function ensureSubmissionSkill(provider: SkillProvider): Promise<string> {
+  if (provider !== 'codex' && provider !== 'claude') return Promise.reject(new Error('未知的 Agent。'))
+  const existing = submissionInstalls.get(provider)
+  if (existing) return existing
+  let pending: Promise<string>
+  pending = ensureSubmissionSkillNow(provider).finally(() => {
+    if (submissionInstalls.get(provider) === pending) submissionInstalls.delete(provider)
+  })
+  submissionInstalls.set(provider, pending)
+  return pending
+}
+
 export function cliBinDirectory(): string { return join(app.getPath('userData'), 'bin') }
 
 export async function ensureCliLauncher(): Promise<void> {
   const cli = sourceCliPath()
-  if (!(await stat(cli).catch(() => null))) throw new Error('实验 CLI 尚未构建，请先运行 npm run build:cli。')
+  if (!(await stat(cli).catch(() => null))) throw new Error('re:paper CLI 尚未构建，请先运行 npm run build:cli。')
   const directory = cliBinDirectory()
   await mkdir(directory, { recursive: true })
   if (process.platform === 'win32') {

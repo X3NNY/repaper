@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { WorkspaceData } from '../../shared/model'
+import type { Submission as LegacySubmission, WorkspaceData } from '../../shared/model'
 import type { CodexThreadPage } from '../../shared/codex'
-import type { SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
+import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../../shared/writing'
 import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
+import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -20,7 +21,7 @@ const paperApi = {
   codexListThreads: (folderPath: string, cursor?: string, scanAll?: boolean): Promise<CodexThreadPage> => ipcRenderer.invoke('codex:list', folderPath, cursor, scanAll),
   claudeListSessions: (folderPath: string, cursor?: string): Promise<SessionPage> => ipcRenderer.invoke('claude:list', folderPath, cursor),
   sessionTerminalList: (folderPath: string): Promise<SessionTerminalInfo[]> => ipcRenderer.invoke('session:terminal:list', folderPath),
-  sessionTerminalStart: (folderPath: string, provider: SessionProvider, sessionId?: string): Promise<SessionTerminalInfo> => ipcRenderer.invoke('session:terminal:start', folderPath, provider, sessionId),
+  sessionTerminalStart: (folderPath: string, provider: SessionProvider, sessionId?: string, permissionMode?: AgentPermissionMode): Promise<SessionTerminalInfo> => ipcRenderer.invoke('session:terminal:start', folderPath, provider, sessionId, permissionMode),
   sessionTerminalSnapshot: (terminalId: string): Promise<SessionTerminalSnapshot> => ipcRenderer.invoke('session:terminal:snapshot', terminalId),
   sessionTerminalWrite: (terminalId: string, data: string): Promise<void> => ipcRenderer.invoke('session:terminal:write', terminalId, data),
   sessionTerminalResize: (terminalId: string, cols: number, rows: number): Promise<void> => ipcRenderer.invoke('session:terminal:resize', terminalId, cols, rows),
@@ -55,6 +56,22 @@ const paperApi = {
     const listener = (_event: Electron.IpcRendererEvent, folderPath: string) => callback(folderPath)
     ipcRenderer.on('experiments:changed', listener)
     return () => ipcRenderer.removeListener('experiments:changed', listener)
+  },
+  submissionsGet: (folderPath: string): Promise<SubmissionWorkspace> => ipcRenderer.invoke('submissions:get', folderPath),
+  submissionsSave: (folderPath: string, draft: SubmissionAttemptDraft, id?: string): Promise<SubmissionAttempt> => ipcRenderer.invoke('submissions:save', folderPath, draft, id),
+  submissionsAdoptLegacy: (folderPath: string, legacy: LegacySubmission, versionLabel?: string): Promise<SubmissionAttempt> => ipcRenderer.invoke('submissions:adopt-legacy', folderPath, legacy, versionLabel),
+  submissionsEventSave: (folderPath: string, submissionId: string, draft: SubmissionEventDraft, id?: string): Promise<SubmissionEvent> => ipcRenderer.invoke('submissions:event:save', folderPath, submissionId, draft, id),
+  submissionsAgentCapabilities: (): Promise<{ verbatimReviews: boolean }> => ipcRenderer.invoke('submissions:agent:capabilities'),
+  submissionsAgentOpen: (folderPath: string, eventId: string, provider: SessionProvider, permissionMode: AgentPermissionMode): Promise<SubmissionAgentLaunch> => ipcRenderer.invoke('submissions:agent:open', folderPath, eventId, provider, permissionMode),
+  submissionsEventDelete: (folderPath: string, id: string): Promise<void> => ipcRenderer.invoke('submissions:event:delete', folderPath, id),
+  submissionsDelete: (folderPath: string, id: string): Promise<void> => ipcRenderer.invoke('submissions:delete', folderPath, id),
+  submissionsOpenSource: (folderPath: string, path: string): Promise<void> => ipcRenderer.invoke('submissions:source:open', folderPath, path),
+  submissionsReadImage: (folderPath: string, relativeSourcePath: string): Promise<string> => ipcRenderer.invoke('submissions:source:read-image', folderPath, relativeSourcePath),
+  submissionsOpenUrl: (url: string): Promise<void> => ipcRenderer.invoke('submissions:url:open', url),
+  onSubmissionsChanged: (callback: (folderPath: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, folderPath: string) => callback(folderPath)
+    ipcRenderer.on('submissions:changed', listener)
+    return () => ipcRenderer.removeListener('submissions:changed', listener)
   },
   skillStatuses: (): Promise<SkillInstallStatus[]> => ipcRenderer.invoke('skills:statuses'),
   skillInstall: (provider: SkillProvider): Promise<SkillInstallStatus[]> => ipcRenderer.invoke('skills:install', provider)

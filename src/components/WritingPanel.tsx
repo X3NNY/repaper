@@ -9,6 +9,7 @@ import type {
   LatexEngine, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
   WritingReviewFile, WritingTemplate, WritingWorkspace
 } from '../../shared/writing'
+import SelectField from './SelectField'
 
 const WritingEditor = lazy(() => import('./WritingEditor'))
 const PdfPreview = lazy(() => import('./PdfPreview'))
@@ -531,12 +532,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
     <h2>开始写作</h2>
     <p>在论文文件夹中创建 .paper/，并初始化独立的 Git 版本记录。</p>
     <div className="writing-setup-actions">
-      <select value={template} onChange={(event) => setTemplate(event.target.value as WritingTemplate | '')} aria-label="选择写作模板">
-        <option value="">选择模板</option>
-        <option value="ieee-single">IEEE 单栏</option>
-        <option value="ieee-double">IEEE 双栏</option>
-        <option value="blank">空模板</option>
-      </select>
+      <div className="writing-template-select"><SelectField value={template} onChange={(value) => setTemplate(value as WritingTemplate | '')} ariaLabel="选择写作模板" options={[{ value: '', label: '选择模板' }, { value: 'ieee-single', label: 'IEEE 单栏' }, { value: 'ieee-double', label: 'IEEE 双栏' }, { value: 'blank', label: '空模板' }]} /></div>
       <button className="button button-primary" onClick={() => void initialize()} disabled={!template || initializing}>{initializing ? <LoaderCircle size={16} className="spin" /> : <ChevronRight size={16} />} 创建写作目录</button>
     </div>
     {error ? <div className="writing-setup-error"><CircleAlert size={16} />{error}</div> : null}

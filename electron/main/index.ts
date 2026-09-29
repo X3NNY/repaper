@@ -1,15 +1,20 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { readFile, mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import { watch, type FSWatcher } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
-import { emptyWorkspace, isWorkspaceData, type WorkspaceData } from '../../shared/model'
+import { extname, isAbsolute, join, resolve } from 'node:path'
+import { emptyWorkspace, isWorkspaceData, normalizeWorkspaceData, type Submission as LegacySubmission, type WorkspaceData } from '../../shared/model'
 import type { LatexEngine, WritingTemplate } from '../../shared/writing'
+import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../../shared/submissions'
+import type { SubmissionAgentLaunch } from '../../shared/submissions'
+import type { AgentPermissionMode, SessionProvider } from '../../shared/sessions'
 import { CodexBridge } from './codexBridge'
 import { ClaudeSessions } from './claudeSessions'
 import { SessionTerminalManager } from './sessionTerminal'
 import { WritingWorkspaceManager } from './writing'
 import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog } from './experiments'
-import { ensureCliLauncher, installSkill, skillStatuses } from './skillInstaller'
+import { adoptLegacySubmission, deleteSubmission, deleteSubmissionEvent, linkSubmissionAgent, loadSubmissions, markSubmissionAgentSent, saveSubmission, saveSubmissionEvent, submissionAgentDeliveryIds, submissionSourcePath } from './submissions'
+import { ensureCliLauncher, ensureSubmissionSkill, installSkill, skillStatuses } from './skillInstaller'
 import type { SkillProvider } from '../../shared/experiments'
 
 let mainWindow: BrowserWindow | null = null
@@ -21,6 +26,10 @@ const terminals = new SessionTerminalManager(codex, claude, (event) =>
 const writing = new WritingWorkspaceManager()
 const experimentWatchers = new Map<string, FSWatcher[]>()
 const experimentTimers = new Map<string, NodeJS.Timeout>()
+const submissionWatchers = new Map<string, FSWatcher[]>()
+const submissionTimers = new Map<string, NodeJS.Timeout>()
+const submissionLaunches = new Map<string, Promise<SubmissionAgentLaunch>>()
+const maxSubmissionImageBytes = 25 * 1024 * 1024
 
 function watchExperiments(folder: string): void {
   if (experimentWatchers.has(folder)) return
@@ -36,6 +45,175 @@ function watchExperiments(folder: string): void {
     mainWindow?.webContents.send('experiments:changed', folder)
   }))
   experimentWatchers.set(folder, watchers)
+}
+
+function watchSubmissions(folder: string): void {
+  if (submissionWatchers.has(folder)) return
+  const base = join(folder, '.repaper', 'submissions')
+  const watchers = ['attempts', 'events', 'agents'].map((name) => watch(join(base, name), () => {
+    const previous = submissionTimers.get(folder)
+    if (previous) clearTimeout(previous)
+    submissionTimers.set(folder, setTimeout(() => mainWindow?.webContents.send('submissions:changed', folder), 150))
+  }))
+  watchers.forEach((watcher) => watcher.on('error', () => {
+    watchers.forEach((item) => item.close())
+    submissionWatchers.delete(folder)
+    mainWindow?.webContents.send('submissions:changed', folder)
+  }))
+  submissionWatchers.set(folder, watchers)
+}
+
+function submissionAgentPrompt(submissionId: string, eventId: string, deliveryId: string, skillPath: string): string {
+  return `repaper:event:${eventId} repaper:delivery:${deliveryId} 请每次先读取「${skillPath}」的当前内容，再使用 repaper-submissions Skill 整理这条投稿进展。先在当前论文目录运行 repaper submission show ${submissionId} --json，读取事件 ${eventId} 的最新 revision 与全部原始材料，在事件 JSON 草稿中填写 expectedRevision。逐条复制 source.text；source.path 相对于当前论文目录的 .repaper/submissions/，实际打开对应图片/PDF 并逐字转录；source.url 只有在能访问实际页面正文时才提取，打不开不得猜测。AI 概括只能写在事件级 summary；每位审稿人的 reviewer 标签、rawScore（所有原始评分、置信度等字段，连同标签与量表按原顺序）和 rawText（完整审稿正文）须从来源逐字复制，保留原语言、拼写、标点及段落，不翻译、改写、删节或重组。可另写 displayMarkdown 作为 rawText 的忠实展示排版：用 Markdown 标题、列表整理原有结构，用 $...$ 或 $$...$$ LaTeX 表达明确的数学公式，不使用直接堆叠的 Unicode 数学符号；不得改写、删减、翻译原文文字、数值或顺序，不确定的公式保持原样。displayMarkdown 只有在 rawText 存在且通过 sourceIds（新材料用 sourceKeys）关联原始材料时才能写入，不得替代 rawText 或作为原文证据。rawDecision 和 editorConclusion 也只记录编辑原话。旧 score/summary/strengths/concerns/requests 可能是 AI 整理，不能冒充原文；必须重新核对原始材料。截图只是核对依据，不能代替 rawText 文本；不确定字符标记 [无法辨认] 或留空，不猜测。已有材料用 sourceIds 关联，新附材料才用 sourceKeys。再用 repaper submission event ${submissionId} --file <事件JSON> --id ${eventId} 更新同一事件。保留用户选择的状态、已有内容与来源，不新建重复事件；若修订冲突则重新读取并合并，完成后说明依据。`
+}
+
+function sessionUpdatedAtMs(value: number): number {
+  if (value > 1e17) return value / 1e6
+  if (value > 1e14) return value / 1e3
+  return value > 1e11 ? value : value * 1000
+}
+
+async function findSubmissionAgentSession(
+  folder: string, provider: SessionProvider, eventId: string, pages = 1, updatedAfterMs = 0,
+  deliveryIds: string[] = [], expectedSessionId?: string, strict = false
+): Promise<string | null> {
+  const marker = `repaper:event:${eventId}`
+  let cursor: string | undefined
+  let candidate: string | null = null
+  for (let page = 0; page < pages; page += 1) {
+    const result = provider === 'codex'
+      ? await codex.listThreads(folder, cursor, true)
+      : await claude.list(folder, cursor)
+    const sessions = provider === 'codex' ? ('threads' in result ? result.threads : []) : ('sessions' in result ? result.sessions : [])
+    const matches = sessions.filter((session) => session.preview.trimStart().startsWith(marker) &&
+      (!expectedSessionId || session.id === expectedSessionId) &&
+      sessionUpdatedAtMs(session.updatedAt) >= updatedAfterMs)
+    const identified = deliveryIds.length
+      ? matches.filter((session) => deliveryIds.some((deliveryId) => session.preview.includes(`repaper:delivery:${deliveryId}`)))
+      : matches
+    for (const match of identified) {
+      if (!strict) return match.id
+      if (candidate && candidate !== match.id) throw new Error('找到多个可能的原 Agent 会话，无法自动选择。')
+      candidate = match.id
+    }
+    if (!result.nextCursor) return candidate
+    cursor = result.nextCursor
+  }
+  if (strict && cursor) throw new Error('原 Agent 会话较多，搜索尚未完成。')
+  return candidate
+}
+
+async function findSubmissionAgentSessionWithLimit(
+  folder: string, provider: SessionProvider, eventId: string, deliveryIds: string[], pages: number, timeoutMs: number
+): Promise<string | null> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      findSubmissionAgentSession(folder, provider, eventId, pages, 0, deliveryIds, undefined, true),
+      new Promise<never>((_resolve, rejectTimeout) => { timer = setTimeout(() => rejectTimeout(new Error('查找原会话超时，请重试。')), timeoutMs) })
+    ])
+  } catch (error) {
+    throw new Error(`无法查找原投稿 Agent 会话：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function openSubmissionAgentNow(folder: string, eventId: string, preferred: SessionProvider, permissionMode: AgentPermissionMode): Promise<SubmissionAgentLaunch> {
+  if (preferred !== 'codex' && preferred !== 'claude') throw new Error('未知的 Agent。')
+  if (permissionMode !== 'auto_approve' && permissionMode !== 'full_access') throw new Error('Agent 审批模式无效。')
+  const state = await loadSubmissions(folder)
+  const event = state.events.find((item) => item.id === eventId)
+  if (!event) throw new Error('投稿进展不存在。')
+  const provider = event.agentSession?.provider ?? preferred
+  await ensureCliLauncher()
+  const skillPath = await ensureSubmissionSkill(provider)
+  const deliveryId = randomUUID()
+  const prompt = submissionAgentPrompt(event.submissionId, eventId, deliveryId, skillPath)
+  const previousDeliveryIds = event.agentSession ? await submissionAgentDeliveryIds(folder, eventId) : []
+  const live = terminals.list(folder).find((item) => item.provider === provider && item.running &&
+    (item.id === event.agentSession?.terminalId || Boolean(event.agentSession?.sessionId && item.sessionId === event.agentSession.sessionId)))
+  if (live) {
+    const promptStartedAt = Date.now() - 5_000
+    await linkSubmissionAgent(folder, eventId, provider, live.id, live.sessionId ?? undefined, live.sessionId ? undefined : deliveryId)
+    terminals.write(live.id, `${prompt}\r`)
+    void resolveSubmissionAgentSession(folder, eventId, live.id, provider, promptStartedAt, live.sessionId, live.sessionId ? [] : [deliveryId, ...previousDeliveryIds]).catch((error) =>
+      console.error('无法确认投稿 Agent 会话：', error))
+    return { terminalId: live.id, provider, sessionId: live.sessionId, eventId }
+  }
+  let sessionId = event.agentSession?.sessionId
+  let createWithId = false
+  if (!sessionId && event.agentSession) {
+    // Older versions recorded promptSentAt before the CLI accepted the prompt.
+    // Without a delivery marker this is only a pending launch, not proof of a session.
+    const legacyUnverified = Boolean(event.agentSession.promptSentAt && previousDeliveryIds.length === 0)
+    const requireOriginal = Boolean(event.agentSession.promptSentAt && !legacyUnverified)
+    sessionId = await findSubmissionAgentSessionWithLimit(
+      folder, provider, eventId, previousDeliveryIds,
+      requireOriginal ? 20 : legacyUnverified ? 5 : 1,
+      requireOriginal ? 15_000 : 6_000
+    ) ?? undefined
+    if (!sessionId && requireOriginal) {
+      throw new Error('未能定位这条进展已确认的原 Agent 会话。请到“会话”页手动继续原会话；此按钮暂无法自动续接，以免创建重复会话。')
+    }
+  }
+  if (sessionId) {
+    const resumedLive = terminals.list(folder).find((item) => item.provider === provider && item.running && item.sessionId === sessionId)
+    if (resumedLive) {
+      const promptStartedAt = Date.now() - 5_000
+      await linkSubmissionAgent(folder, eventId, provider, resumedLive.id, sessionId)
+      terminals.write(resumedLive.id, `${prompt}\r`)
+      void resolveSubmissionAgentSession(folder, eventId, resumedLive.id, provider, promptStartedAt, sessionId, []).catch((error) =>
+        console.error('无法确认投稿 Agent 会话：', error))
+      return { terminalId: resumedLive.id, provider, sessionId, eventId }
+    }
+  }
+  if (!sessionId) {
+    if (provider === 'claude') { sessionId = randomUUID(); createWithId = true }
+  } else if (provider === 'claude') {
+    try { await claude.assertSessionFolder(folder, sessionId) }
+    catch {
+      if (event.agentSession?.promptSentAt) throw new Error('原 Claude Code 会话无法恢复，请检查或手动重新关联。')
+      sessionId = randomUUID()
+      createWithId = true
+    }
+  }
+  const newSession = !sessionId || createWithId
+  const terminal = await terminals.start(folder, provider, sessionId, createWithId, permissionMode, prompt)
+  const promptStartedAt = newSession ? 0 : Date.now() - 5_000
+  await linkSubmissionAgent(folder, eventId, provider, terminal.id, sessionId, newSession ? deliveryId : undefined, newSession)
+  void resolveSubmissionAgentSession(folder, eventId, terminal.id, provider, promptStartedAt, terminal.sessionId, newSession ? [deliveryId] : []).catch((error) =>
+    console.error('无法确认投稿 Agent 会话：', error))
+  return { terminalId: terminal.id, provider, sessionId: terminal.sessionId, eventId }
+}
+
+function openSubmissionAgent(folder: string, eventId: string, preferred: SessionProvider, permissionMode: AgentPermissionMode): Promise<SubmissionAgentLaunch> {
+  const key = `${process.platform === 'win32' ? folder.toLowerCase() : folder}\0${eventId}`
+  const existing = submissionLaunches.get(key)
+  if (existing) return existing
+  const pending = openSubmissionAgentNow(folder, eventId, preferred, permissionMode)
+  submissionLaunches.set(key, pending)
+  void pending.finally(() => { if (submissionLaunches.get(key) === pending) submissionLaunches.delete(key) }).catch(() => undefined)
+  return pending
+}
+
+async function resolveSubmissionAgentSession(
+  folder: string, eventId: string, terminalId: string, provider: SessionProvider,
+  promptStartedAt: number, expectedSessionId: string | null, deliveryIds: string[]
+): Promise<void> {
+  for (const delay of [1_000, 2_000, 5_000, 10_000, 20_000]) {
+    await new Promise((done) => setTimeout(done, delay))
+    const state = await loadSubmissions(folder)
+    const event = state.events.find((item) => item.id === eventId)
+    if (event?.agentSession?.terminalId !== terminalId) return
+    const sessionId = await findSubmissionAgentSession(folder, provider, eventId, 1, promptStartedAt, deliveryIds, expectedSessionId ?? undefined)
+    if (sessionId) {
+      await markSubmissionAgentSent(folder, eventId, terminalId, sessionId)
+      return
+    }
+    const terminal = terminals.list(folder).find((item) => item.id === terminalId)
+    if (!terminal?.running) return
+  }
 }
 
 async function requireFolder(path: unknown): Promise<string> {
@@ -55,7 +233,7 @@ async function loadWorkspace(): Promise<WorkspaceData> {
     const content = await readFile(workspacePath(), 'utf8')
     const parsed: unknown = JSON.parse(content)
     if (!isWorkspaceData(parsed)) throw new Error('数据格式不受支持。')
-    return parsed
+    return normalizeWorkspaceData(parsed)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyWorkspace()
     throw error
@@ -67,7 +245,7 @@ async function persistWorkspace(workspace: WorkspaceData): Promise<void> {
   const path = workspacePath()
   const temporaryPath = `${path}.tmp`
   await mkdir(app.getPath('userData'), { recursive: true })
-  await writeFile(temporaryPath, JSON.stringify(workspace, null, 2), 'utf8')
+  await writeFile(temporaryPath, JSON.stringify(normalizeWorkspaceData(workspace), null, 2), 'utf8')
   await rename(temporaryPath, path)
 }
 
@@ -144,8 +322,8 @@ app.whenReady().then(async () => {
     claude.list(await requireFolder(folderPath), cursor))
   ipcMain.handle('session:terminal:list', async (_event, folderPath: string) =>
     terminals.list(await requireFolder(folderPath)))
-  ipcMain.handle('session:terminal:start', async (_event, folderPath: string, provider: 'codex' | 'claude', sessionId?: string) =>
-    terminals.start(await requireFolder(folderPath), provider, sessionId))
+  ipcMain.handle('session:terminal:start', async (_event, folderPath: string, provider: SessionProvider, sessionId?: string, permissionMode?: AgentPermissionMode) =>
+    terminals.start(await requireFolder(folderPath), provider, sessionId, false, permissionMode))
   ipcMain.handle('session:terminal:snapshot', (_event, terminalId: string) => terminals.snapshot(terminalId))
   ipcMain.handle('session:terminal:write', (_event, terminalId: string, data: string) => terminals.write(terminalId, data))
   ipcMain.handle('session:terminal:resize', (_event, terminalId: string, cols: number, rows: number) =>
@@ -193,6 +371,55 @@ app.whenReady().then(async () => {
     watchExperiments(folder)
     return state
   })
+  ipcMain.handle('submissions:get', async (_event, folderPath: string) => {
+    const folder = await requireFolder(folderPath)
+    const state = await loadSubmissions(folder)
+    watchSubmissions(folder)
+    return state
+  })
+  ipcMain.handle('submissions:save', async (_event, folderPath: string, draft: SubmissionAttemptDraft, id?: string) =>
+    saveSubmission(await requireFolder(folderPath), draft, id))
+  ipcMain.handle('submissions:adopt-legacy', async (_event, folderPath: string, legacy: LegacySubmission, versionLabel?: string) =>
+    adoptLegacySubmission(await requireFolder(folderPath), legacy, versionLabel))
+  ipcMain.handle('submissions:event:save', async (_event, folderPath: string, submissionId: string, draft: SubmissionEventDraft, id?: string) =>
+    saveSubmissionEvent(await requireFolder(folderPath), submissionId, draft, id))
+  ipcMain.handle('submissions:agent:capabilities', () => ({ verbatimReviews: true }))
+  ipcMain.handle('submissions:agent:open', async (_event, folderPath: string, eventId: string, provider: SessionProvider, permissionMode: AgentPermissionMode) =>
+    openSubmissionAgent(await requireFolder(folderPath), eventId, provider, permissionMode))
+  ipcMain.handle('submissions:event:delete', async (_event, folderPath: string, id: string) =>
+    deleteSubmissionEvent(await requireFolder(folderPath), id))
+  ipcMain.handle('submissions:delete', async (_event, folderPath: string, id: string) =>
+    deleteSubmission(await requireFolder(folderPath), id))
+  ipcMain.handle('submissions:source:open', async (_event, folderPath: string, path: string) => {
+    const file = await submissionSourcePath(await requireFolder(folderPath), path)
+    const error = await shell.openPath(file)
+    if (error) throw new Error(error)
+  })
+  ipcMain.handle('submissions:source:read-image', async (_event, folderPath: string, relativeSourcePath: string) => {
+    const file = await submissionSourcePath(await requireFolder(folderPath), relativeSourcePath)
+    const extension = extname(file).toLowerCase()
+    const mimeType = extension === '.png' ? 'image/png'
+      : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg'
+        : extension === '.webp' ? 'image/webp' : null
+    if (!mimeType) throw new Error('只能预览 PNG、JPEG 或 WebP 图片。')
+    const info = await stat(file)
+    if (!info.isFile() || info.size < 1 || info.size > maxSubmissionImageBytes) throw new Error('投稿图片无效或超过 25 MB。')
+    const bytes = await readFile(file)
+    if (bytes.length < 1 || bytes.length > maxSubmissionImageBytes) throw new Error('投稿图片无效或超过 25 MB。')
+    const validSignature = mimeType === 'image/png'
+      ? bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      : mimeType === 'image/jpeg'
+        ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+        : bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'
+    if (!validSignature) throw new Error('投稿图片格式与文件内容不符。')
+    return `data:${mimeType};base64,${bytes.toString('base64')}`
+  })
+  ipcMain.handle('submissions:url:open', async (_event, url: string) => {
+    if (typeof url !== 'string') throw new Error('链接无效。')
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('只能打开 HTTP 或 HTTPS 链接。')
+    await shell.openExternal(parsed.toString())
+  })
   ipcMain.handle('experiments:log', async (_event, folderPath: string, runId: string) =>
     readRunLog(await requireFolder(folderPath), runId))
   ipcMain.handle('experiments:figure', async (_event, folderPath: string, experimentId: string, path: string) =>
@@ -214,6 +441,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   for (const watchers of experimentWatchers.values()) watchers.forEach((item) => item.close())
   for (const timer of experimentTimers.values()) clearTimeout(timer)
+  for (const watchers of submissionWatchers.values()) watchers.forEach((item) => item.close())
+  for (const timer of submissionTimers.values()) clearTimeout(timer)
   terminals.stop()
   codex.stop()
 })

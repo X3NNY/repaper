@@ -1,4 +1,4 @@
-import type { SessionProvider } from './sessions'
+import type { AgentPermissionMode, SessionProvider } from './sessions'
 
 export type PaperStatus = 'idea' | 'research' | 'writing' | 'submitted' | 'revision' | 'published' | 'paused'
 export type RouteStatus = 'exploring' | 'active' | 'paused' | 'closed'
@@ -72,16 +72,41 @@ export interface Paper {
 export interface WorkspaceData {
   schemaVersion: 1
   defaultAgent?: SessionProvider
+  agentPermissionMode?: AgentPermissionMode
+  // Older workspaces stored permissions separately for each Agent.
+  agentPermissionModes?: Partial<Record<SessionProvider, AgentPermissionMode>>
   papers: Paper[]
 }
 
-export const emptyWorkspace = (): WorkspaceData => ({ schemaVersion: 1, defaultAgent: 'codex', papers: [] })
+export const emptyWorkspace = (): WorkspaceData => ({
+  schemaVersion: 1,
+  defaultAgent: 'codex',
+  agentPermissionMode: 'auto_approve',
+  papers: []
+})
+
+export function normalizeWorkspaceData(workspace: WorkspaceData): WorkspaceData {
+  const provider = workspace.defaultAgent === 'claude' ? 'claude' : 'codex'
+  const agentPermissionMode = workspace.agentPermissionMode
+    ?? workspace.agentPermissionModes?.[provider]
+    ?? 'auto_approve'
+  const normalized = { ...workspace, agentPermissionMode }
+  delete normalized.agentPermissionModes
+  return normalized
+}
 
 export function isWorkspaceData(value: unknown): value is WorkspaceData {
   if (!value || typeof value !== 'object') return false
   const workspace = value as Partial<WorkspaceData>
   if (workspace.schemaVersion !== 1 || !Array.isArray(workspace.papers)) return false
   if (workspace.defaultAgent !== undefined && workspace.defaultAgent !== 'codex' && workspace.defaultAgent !== 'claude') return false
+  if (workspace.agentPermissionMode !== undefined && workspace.agentPermissionMode !== 'auto_approve' && workspace.agentPermissionMode !== 'full_access') return false
+  if (workspace.agentPermissionModes !== undefined) {
+    const modes = workspace.agentPermissionModes
+    if (!modes || typeof modes !== 'object' || Array.isArray(modes)) return false
+    if (Object.keys(modes).some((provider) => provider !== 'codex' && provider !== 'claude')) return false
+    if (Object.values(modes).some((mode) => mode !== undefined && mode !== 'auto_approve' && mode !== 'full_access')) return false
+  }
 
   const isText = (text: unknown): text is string => typeof text === 'string'
   const hasIdentity = (record: unknown): record is { id: string } =>

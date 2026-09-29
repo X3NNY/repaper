@@ -1,4 +1,5 @@
 export type SessionProvider = 'codex' | 'claude'
+export type AgentPermissionMode = 'auto_approve' | 'full_access'
 
 export interface SessionSummary {
   id: string
@@ -18,6 +19,7 @@ export interface SessionTerminalInfo {
   id: string
   folderPath: string
   provider: SessionProvider
+  permissionMode: AgentPermissionMode
   sessionId: string | null
   running: boolean
   exitCode: number | null

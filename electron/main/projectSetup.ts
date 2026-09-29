@@ -11,6 +11,7 @@ const instructions = [
   '- Run `repaper init` to prepare this project. It maintains this section of AGENTS.md without changing other instructions.',
   '- The active LaTeX manuscript belongs in `.paper/`; its entry file is `.paper/manuscript.tex`. Keep original drafts and assets when adopting an existing project.',
   '- Experiment records live in `.repaper/experiments/`. Use the `repaper-experiments` skill and `repaper` CLI to maintain them; do not edit record JSON by hand.',
+  '- Submission attempts, review rounds, editorial decisions, and original source material live in `.repaper/submissions/`. Use the `repaper-submissions` skill and `repaper submission` CLI; preserve original decision wording and review scores.',
   '- Use the `repaper-init` skill when adopting existing manuscript sources or historical results. Import old evidence with `repaper run import`; initialization must not rerun experiments or present imported evidence as a new execution.',
   endMarker
 ].join('\n')

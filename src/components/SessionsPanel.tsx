@@ -5,7 +5,7 @@ import {
   MessageSquareText, Plus, RefreshCw, Search, TerminalSquare, X
 } from 'lucide-react'
 import type { CodexThreadSummary } from '../../shared/codex'
-import type { SessionProvider, SessionSummary, SessionTerminalInfo } from '../../shared/sessions'
+import type { AgentPermissionMode, SessionProvider, SessionSummary, SessionTerminalInfo } from '../../shared/sessions'
 
 const SessionTerminal = lazy(() => import('./SessionTerminal'))
 
@@ -14,6 +14,8 @@ interface Props {
   onChooseFolder: () => void
   toolbarTarget: HTMLDivElement | null
   defaultAgent: SessionProvider
+  permissionMode: AgentPermissionMode
+  focusTerminalId?: string | null
 }
 
 const providerNames: Record<SessionProvider, string> = {
@@ -26,7 +28,12 @@ function sessionTime(value: number): string {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(value * 1000))
 }
 
-export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarget, defaultAgent }: Props) {
+function sessionTitle(session: SessionSummary): string {
+  const marker = /^repaper:event:(se_[a-f0-9-]+)/i.exec(session.preview)
+  return marker ? `投稿整理 · ${marker[1].slice(-8)}` : session.title
+}
+
+export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarget, defaultAgent, permissionMode, focusTerminalId }: Props) {
   const api = window.paperApi
   const [codexThreads, setCodexThreads] = useState<CodexThreadSummary[]>([])
   const [claudeSessions, setClaudeSessions] = useState<SessionSummary[]>([])
@@ -42,6 +49,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
   const [listErrors, setListErrors] = useState<Record<SessionProvider, string>>({ codex: '', claude: '' })
   const [terminalError, setTerminalError] = useState('')
   const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false)
+  const focusedTerminalRef = useRef<string | null>(null)
   const folderRef = useRef(folderPath)
   const newSessionControlRef = useRef<HTMLDivElement>(null)
   const codexListModeRef = useRef(false)
@@ -148,7 +156,8 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
         ...items,
         ...current.filter((item) => !items.some((existing) => existing.id === item.id))
       ])
-      setSelectedTerminalId((current) => current ?? items.filter((item) => item.running).at(-1)?.id ?? null)
+      setSelectedTerminalId((current) => focusTerminalId && items.some((item) => item.id === focusTerminalId)
+        ? focusTerminalId : current ?? items.filter((item) => item.running).at(-1)?.id ?? null)
     }).catch((reason) => {
       if (active && folderRef.current === folderPath) {
         setTerminalError(reason instanceof Error ? reason.message : '读取运行中的终端失败。')
@@ -156,6 +165,13 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
     })
     return () => { active = false }
   }, [api, folderPath, refreshCodex, refreshClaude])
+
+  useEffect(() => {
+    if (!focusTerminalId || focusedTerminalRef.current === focusTerminalId) return
+    if (!terminals.some((item) => item.id === focusTerminalId)) return
+    focusedTerminalRef.current = focusTerminalId
+    setSelectedTerminalId(focusTerminalId)
+  }, [focusTerminalId, terminals])
 
   const onTerminalStatus = useCallback((terminalId: string, provider: SessionProvider, running: boolean, exitCode: number | null) => {
     setTerminals((current) => current.map((item) =>
@@ -172,7 +188,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
     setLaunching(key)
     setTerminalError('')
     try {
-      const terminal = await api.sessionTerminalStart(folderPath, provider, sessionId)
+      const terminal = await api.sessionTerminalStart(folderPath, provider, sessionId, permissionMode)
       if (folderRef.current !== folderPath) return
       setTerminals((current) => [
         ...current.filter((item) => item.id !== terminal.id && !(item.provider === provider && item.sessionId === sessionId)),
@@ -194,7 +210,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
     setLaunching(`${provider}:new`)
     setTerminalError('')
     try {
-      const terminal = await api.sessionTerminalStart(folderPath, provider)
+      const terminal = await api.sessionTerminalStart(folderPath, provider, undefined, permissionMode)
       if (folderRef.current !== folderPath) return
       setTerminals((current) => [...current, terminal])
       setSelectedTerminalId(terminal.id)
@@ -252,16 +268,16 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
       {terminalError ? <div className="codex-error"><CircleAlert size={17} /><span>{terminalError}</span><button onClick={() => setTerminalError('')}>关闭</button></div> : null}
       <div className="codex-thread-scroll">
         {groups.map(({ provider, sessions, cursor, loading }) => {
-          const newTerminals = terminals.filter((item) => item.provider === provider && !item.sessionId)
+          const newTerminals = terminals.filter((item) => item.provider === provider && (!item.sessionId || !sessions.some((session) => session.id === item.sessionId)))
           return <div className="session-group" key={provider}>
             <div className="session-group-label"><span>{provider === 'codex' ? <TerminalSquare size={15} /> : <Code2 size={15} />}{providerNames[provider]}</span><span>{sessions.length}</span></div>
             {listErrors[provider] ? <div className="session-group-error"><CircleAlert size={15} />{listErrors[provider]}</div> : null}
             {loading && !sessions.length ? <div className="session-group-state"><LoaderCircle size={17} className="spin" /> {provider === 'codex' && scanningCodexAll || provider === 'claude' && scanningClaudeAll ? '正在扫描会话…' : '正在读取会话…'}</div> : null}
             {!loading && !sessions.length && !newTerminals.length ? <div className="session-group-state">暂无{providerNames[provider]}会话</div> : null}
-            {newTerminals.map((terminal) => <button className={`codex-thread ${selectedTerminalId === terminal.id ? 'active' : ''}`} key={terminal.id} onClick={() => setSelectedTerminalId(terminal.id)}><span className="codex-thread-icon"><TerminalSquare size={16} /></span><span className="codex-thread-copy"><strong>新建{providerNames[provider]}会话</strong><small>{terminal.running ? '终端运行中' : '终端已结束'}</small></span></button>)}
+            {newTerminals.map((terminal) => <button className={`codex-thread ${selectedTerminalId === terminal.id ? 'active' : ''}`} key={terminal.id} onClick={() => setSelectedTerminalId(terminal.id)}><span className="codex-thread-icon"><TerminalSquare size={16} /></span><span className="codex-thread-copy"><strong>{terminal.sessionId ? `关联的 ${providerNames[provider]} 会话` : `新建${providerNames[provider]}会话`}</strong><small>{terminal.running ? '终端运行中' : '终端已结束'}</small></span></button>)}
             {sessions.map((session) => {
               const opened = terminals.find((item) => item.provider === provider && item.sessionId === session.id)
-              return <button className={`codex-thread ${selectedTerminalId === opened?.id ? 'active' : ''}`} key={session.id} onClick={() => void openSession(provider, session.id)} disabled={Boolean(launching)}><span className="codex-thread-icon">{launching === `${provider}:${session.id}` ? <LoaderCircle size={16} className="spin" /> : <MessageSquareText size={16} />}</span><span className="codex-thread-copy"><strong>{session.title}</strong><small>{opened?.running ? '终端运行中 · ' : ''}{session.preview && session.preview !== session.title ? session.preview : '点击在终端中继续'}</small></span><time>{sessionTime(session.updatedAt)}</time></button>
+              return <button className={`codex-thread ${selectedTerminalId === opened?.id ? 'active' : ''}`} key={session.id} onClick={() => void openSession(provider, session.id)} disabled={Boolean(launching)}><span className="codex-thread-icon">{launching === `${provider}:${session.id}` ? <LoaderCircle size={16} className="spin" /> : <MessageSquareText size={16} />}</span><span className="codex-thread-copy"><strong>{sessionTitle(session)}</strong><small>{opened?.running ? '终端运行中 · ' : ''}{session.preview.startsWith('repaper:event:') ? '点击继续整理这条投稿进展' : session.preview && session.preview !== session.title ? session.preview : '点击在终端中继续'}</small></span><time>{sessionTime(session.updatedAt)}</time></button>
             })}
             {cursor ? <button className="codex-load-more" onClick={() => provider === 'codex' ? void refreshCodex(cursor, codexListModeRef.current) : void refreshClaude(cursor)} disabled={loading}>{loading ? '加载中…' : '加载更多会话'} <ArrowRight size={14} /></button> : null}
           </div>
@@ -270,7 +286,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
       <div className="codex-list-footer"><button onClick={() => { void refreshCodex(undefined, true); void refreshClaude(undefined, true) }} disabled={loadingCodex || loadingClaude} title="扫描 Codex 和 Claude Code 的本地会话，可能需要几十秒"><Search size={13} /> {scanningCodexAll || scanningClaudeAll ? '扫描中…' : '扫描会话'}</button></div>
     </aside>
     <div className="codex-conversation">
-      <div className="codex-conversation-head"><div><strong>{selected ? selectedSession?.title || (selected.sessionId ? `${providerNames[selected.provider]} 会话` : `新建 ${providerNames[selected.provider]} 会话`) : '会话终端'}</strong><span>{selected ? selected.running ? `${providerNames[selected.provider]} 运行中` : `终端已退出${selected.exitCode === null ? '' : ` · ${selected.exitCode}`}` : '选择会话开始'}</span></div>{selected ? <button className="small-button codex-terminal-close" onClick={() => void closeTerminal(selected.id)}><X size={14} /> 关闭终端</button> : null}</div>
+      <div className="codex-conversation-head"><div><strong>{selected ? selectedSession ? sessionTitle(selectedSession) : selected.sessionId ? `${providerNames[selected.provider]} 会话` : `新建 ${providerNames[selected.provider]} 会话` : '会话终端'}</strong><span>{selected ? selected.running ? `${providerNames[selected.provider]} 运行中 · ${selected.permissionMode === 'full_access' ? '完全访问' : '自动审批'}` : `终端已退出${selected.exitCode === null ? '' : ` · ${selected.exitCode}`}` : '选择会话开始'}</span></div>{selected ? <button className="small-button codex-terminal-close" onClick={() => void closeTerminal(selected.id)}><X size={14} /> 关闭终端</button> : null}</div>
       {selected ? (
         <Suspense fallback={<div className="codex-terminal-loading"><LoaderCircle size={18} className="spin" /> 正在准备终端…</div>}>
           <SessionTerminal key={selected.id} terminalId={selected.id} provider={selected.provider} onStatus={onTerminalStatus} />
