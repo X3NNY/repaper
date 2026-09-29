@@ -438,8 +438,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .writing-pdf-controls button:disabled { opacity: .4; }
 .writing-pdf-controls i { width: 1px; height: 14px; margin: 0 5px; background: #dce5da; }
 .writing-pdf-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; background: #e9ede9; text-align: center; }
-.writing-pdf-scroll canvas { display: block; margin: 22px auto 35px; background: #fff; box-shadow: 0 7px 24px #1d32231c; }
-.writing-pdf.fit-zoom .writing-pdf-scroll canvas { max-width: calc(100% - 56px); }
+.writing-pdf-pages { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 14px; width: max-content; min-width: 100%; padding: 10px 10px 18px; }
+.writing-pdf-page { position: relative; flex: 0 0 auto; overflow: hidden; background: #fff; box-shadow: 0 5px 20px #1d32231c; }
+.writing-pdf-page canvas { display: block; width: 100%; height: 100%; }
+.writing-pdf-page-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; color: #ad574b; font-size: 11px; }
 .writing-pdf-state { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 22px; color: #94a798; font-size: 11px; }
 .writing-pdf-state strong { color: #5d7764; font: 400 17px 'Libre Baskerville', 'Songti SC', Georgia, serif; }
 .writing-pdf-state.error { color: #ad574b; }

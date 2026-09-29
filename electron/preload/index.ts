@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { WorkspaceData } from '../../shared/model'
 import type { CodexThreadPage } from '../../shared/codex'
 import type { SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
-import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingTemplate, WritingWorkspace } from '../../shared/writing'
+import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../../shared/writing'
 import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 
 if (process.platform === 'win32') {
@@ -37,6 +37,7 @@ const paperApi = {
   writingSave: (folderPath: string, relativePath: string, content: string): Promise<void> => ipcRenderer.invoke('writing:save', folderPath, relativePath, content),
   writingCreate: (folderPath: string, relativePath: string): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:create', folderPath, relativePath),
   writingPdf: (folderPath: string): Promise<Uint8Array> => ipcRenderer.invoke('writing:pdf', folderPath),
+  writingInverseSearch: (folderPath: string, page: number, x: number, y: number): Promise<WritingSourceLocation | null> => ipcRenderer.invoke('writing:inverse-search', folderPath, page, x, y),
   writingCompile: (folderPath: string, engine: LatexEngine): Promise<WritingCompileResult> => ipcRenderer.invoke('writing:compile', folderPath, engine),
   writingCompileLog: (folderPath: string): Promise<string | null> => ipcRenderer.invoke('writing:compile-log', folderPath),
   writingChanges: (folderPath: string): Promise<WritingChangeSummary> => ipcRenderer.invoke('writing:changes', folderPath),

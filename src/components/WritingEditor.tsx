@@ -11,6 +11,7 @@ interface Props {
   onChange: (value: string) => void
   onSave: () => void
   reviewOriginal?: string
+  jumpTo?: { line: number; column: number; requestId: number }
 }
 
 const latex = StreamLanguage.define(stex)
@@ -33,7 +34,7 @@ const reviewTheme = EditorView.theme({
   '.cm-changedLineGutter': { backgroundColor: '#55a56b' }
 })
 
-export default function WritingEditor({ filePath, value, onChange, onSave, reviewOriginal }: Props) {
+export default function WritingEditor({ filePath, value, onChange, onSave, reviewOriginal, jumpTo }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -71,6 +72,15 @@ export default function WritingEditor({ filePath, value, onChange, onSave, revie
     if (!view || view.state.doc.toString() === value) return
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
   }, [value])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || !jumpTo || reviewOriginal !== undefined) return
+    const line = view.state.doc.line(Math.max(1, Math.min(jumpTo.line, view.state.doc.lines)))
+    const position = Math.min(line.to, line.from + Math.max(0, jumpTo.column))
+    view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: 'center' }) })
+    view.focus()
+  }, [jumpTo, reviewOriginal])
 
   return <div className="writing-editor-host" ref={hostRef} onKeyDown={(event) => {
     if (reviewOriginal === undefined && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {

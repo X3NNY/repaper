@@ -25,6 +25,12 @@ export interface WritingCompileResult {
   error?: string
 }
 
+export interface WritingSourceLocation {
+  path: string
+  line: number
+  column: number
+}
+
 export interface WritingHistoryEntry {
   hash: string
   message: string

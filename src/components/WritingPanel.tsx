@@ -88,6 +88,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
   const [template, setTemplate] = useState<WritingTemplate | ''>('')
   const [initializing, setInitializing] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [jumpTarget, setJumpTarget] = useState<{ path: string; line: number; column: number; requestId: number } | null>(null)
   const [content, setContent] = useState('')
   const [reading, setReading] = useState(false)
   const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved')
@@ -126,6 +127,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
   const saveTimerRef = useRef<number | null>(null)
   const saveChainRef = useRef<Promise<void>>(Promise.resolve())
   const changesRequestRef = useRef(0)
+  const jumpRequestRef = useRef(0)
 
   useEffect(() => {
     const next = savedSplit(folderPath)
@@ -219,6 +221,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
         setContent('')
       }
       setSelectedPath(path)
+      setJumpTarget(null)
       setSaveState('saved')
       setError('')
     } catch (reason) {
@@ -228,12 +231,40 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
     }
   }, [api, folderPath, flushSave])
 
+  const inverseSearch = useCallback(async (page: number, x: number, y: number) => {
+    if (!api || !folderPath) return
+    if (typeof api.writingInverseSearch !== 'function') {
+      setError('当前窗口尚未加载 PDF 定位功能。请重启 re:paper 后再试。')
+      return
+    }
+    try {
+      const location = await api.writingInverseSearch(folderPath, page, x, y)
+      if (!location) {
+        setError('该位置没有对应的 TeX 源码，请尝试点击正文或重新编译。')
+        return
+      }
+      await loadFile(location.path)
+      if (documentRef.current.path !== location.path) return
+      const segments = location.path.split('/')
+      setExpanded((current) => {
+        const next = new Set(current)
+        for (let index = 1; index < segments.length; index += 1) next.add(segments.slice(0, index).join('/'))
+        return next
+      })
+      setJumpTarget({ ...location, requestId: ++jumpRequestRef.current })
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法定位 PDF 对应的 TeX 行。')
+    }
+  }, [api, folderPath, loadFile])
+
   useEffect(() => {
     if (!api || !folderPath) { setLoading(false); return }
     let active = true
     setLoading(true)
     setWorkspace(null)
     setSelectedPath(null)
+    setJumpTarget(null)
     setPdfData(null)
     setCompileLog(null)
     setHistory([])
@@ -336,6 +367,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
 
   async function stopReview() {
     setSelectedHistory('')
+    setJumpTarget(null)
     setReviewSummary(null)
     setReviewSelectedPath(null)
     setReviewFile(null)
@@ -557,7 +589,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
         <div className="writing-source">
           <div className="writing-source-head"><span><FileText size={15} />{selectedHistory ? reviewSelectedPath || '选择变更文件' : selectedPath || '未选择文件'}</span>{selectedHistory ? selectedReviewChange ? <small className={`writing-review-badge ${selectedReviewChange.status}`}>{changeLabel[selectedReviewChange.status]} · +{selectedReviewChange.additions} -{selectedReviewChange.deletions}</small> : null : <small className={`writing-save-state ${saveState}`}>{saveState === 'saved' ? '已保存' : saveState === 'saving' ? '保存中…' : saveState === 'error' ? '保存失败' : '待保存'}</small>}</div>
           {selectedHistory ? reviewLoading || reviewFileLoading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在生成版本差异…</div> : reviewError ? <div className="writing-source-state error"><CircleAlert size={18} />{reviewError}</div> : reviewFile?.binary ? <div className="writing-source-state"><FileText size={25} />这个文件是二进制文件或暂不支持文本对比。</div> : reviewSelectedPath && reviewFile ? <Suspense fallback={<div className="writing-source-state">正在准备对比视图…</div>}><WritingEditor key={`review:${selectedHistory}:${reviewSelectedPath}`} filePath={reviewSelectedPath} value={reviewFile.current} reviewOriginal={reviewFile.original} onChange={() => undefined} onSave={() => undefined} /></Suspense> : <div className="writing-source-state">选择左侧变更文件查看差异。</div>
-            : reading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在打开文件…</div> : selectedPath && editableFile(selectedPath) ? <Suspense fallback={<div className="writing-source-state">正在准备编辑器…</div>}><WritingEditor key={selectedPath} filePath={selectedPath} value={content} onChange={changeContent} onSave={() => void saveCurrent().catch(() => undefined)} /></Suspense> : <div className="writing-source-state"><FileText size={25} />{selectedPath ? '这个文件无法在内置编辑器中打开。' : '从左侧选择一个文件开始写作。'}</div>}
+            : reading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在打开文件…</div> : selectedPath && editableFile(selectedPath) ? <Suspense fallback={<div className="writing-source-state">正在准备编辑器…</div>}><WritingEditor key={selectedPath} filePath={selectedPath} value={content} onChange={changeContent} onSave={() => void saveCurrent().catch(() => undefined)} jumpTo={jumpTarget?.path === selectedPath ? jumpTarget : undefined} /></Suspense> : <div className="writing-source-state"><FileText size={25} />{selectedPath ? '这个文件无法在内置编辑器中打开。' : '从左侧选择一个文件开始写作。'}</div>}
         </div>
         {showPdf ? <div className="writing-divider" role="separator" aria-label="调整编辑器与 PDF 预览宽度" aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(splitRatio * 100)} tabIndex={0}
           onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); splitPointerRef.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); setDraggingSplit(true); updateSplitFromPointer(event.clientX) }}
@@ -567,7 +599,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
           onLostPointerCapture={(event) => finishSplit(event.pointerId)}
           onDoubleClick={() => { updateSplit(0.5); localStorage.setItem(`repaper-writing-split:${folderPath ?? ''}`, String(splitRatioRef.current)) }}
           onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const rect = splitContainerRef.current?.getBoundingClientRect(); const source = splitContainerRef.current?.querySelector('.writing-source')?.getBoundingClientRect(); const current = rect && source ? (source.width + 4) / rect.width : splitRatio; updateSplit(event.key === 'Home' ? 0.25 : event.key === 'End' ? 0.75 : current + (event.key === 'ArrowLeft' ? -0.05 : 0.05)); localStorage.setItem(`repaper-writing-split:${folderPath ?? ''}`, String(splitRatioRef.current)) }} /> : null}
-        {showPdf ? <Suspense fallback={<div className="writing-pdf-state">正在准备 PDF 预览…</div>}><PdfPreview data={pdfData} log={compileLog} onOpenPdfFolder={() => void api.writingOpenPdfFolder(folderPath).catch((reason) => setError(reason instanceof Error ? reason.message : '无法打开 PDF 所在文件夹。'))} /></Suspense> : null}
+        {showPdf ? <Suspense fallback={<div className="writing-pdf-state">正在准备 PDF 预览…</div>}><PdfPreview data={pdfData} log={compileLog} onOpenPdfFolder={() => void api.writingOpenPdfFolder(folderPath).catch((reason) => setError(reason instanceof Error ? reason.message : '无法打开 PDF 所在文件夹。'))} onInverseSearch={inverseSearch} /></Suspense> : null}
       </div>
     </div>
     {showCommit ? <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCommitDialog() }}>

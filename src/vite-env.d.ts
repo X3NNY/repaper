@@ -3,7 +3,7 @@
 import type { WorkspaceData } from '../shared/model'
 import type { CodexThreadPage } from '../shared/codex'
 import type { SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../shared/sessions'
-import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingTemplate, WritingWorkspace } from '../shared/writing'
+import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../shared/writing'
 import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 
 declare global {
@@ -30,6 +30,7 @@ declare global {
       writingSave: (folderPath: string, relativePath: string, content: string) => Promise<void>
       writingCreate: (folderPath: string, relativePath: string) => Promise<WritingWorkspace>
       writingPdf: (folderPath: string) => Promise<Uint8Array>
+      writingInverseSearch: (folderPath: string, page: number, x: number, y: number) => Promise<WritingSourceLocation | null>
       writingCompile: (folderPath: string, engine: LatexEngine) => Promise<WritingCompileResult>
       writingCompileLog: (folderPath: string) => Promise<string | null>
       writingChanges: (folderPath: string) => Promise<WritingChangeSummary>

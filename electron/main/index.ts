@@ -162,6 +162,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('writing:create', async (_event, folderPath: string, relativePath: string) =>
     writing.createSource(await requireFolder(folderPath), relativePath))
   ipcMain.handle('writing:pdf', async (_event, folderPath: string) => writing.readPdf(await requireFolder(folderPath)))
+  ipcMain.handle('writing:inverse-search', async (_event, folderPath: string, page: number, x: number, y: number) =>
+    writing.inverseSearch(await requireFolder(folderPath), page, x, y))
   ipcMain.handle('writing:compile', async (_event, folderPath: string, engine: LatexEngine) =>
     writing.compile(await requireFolder(folderPath), engine))
   ipcMain.handle('writing:compile-log', async (_event, folderPath: string) => writing.readCompileLog(await requireFolder(folderPath)))

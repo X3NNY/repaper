@@ -6,7 +6,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node
 import { promisify } from 'node:util'
 import type {
   LatexEngine, WritingChange, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
-  WritingReviewFile, WritingTemplate, WritingWorkspace
+  WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace
 } from '../../shared/writing'
 
 const execFileAsync = promisify(execFile)
@@ -366,6 +366,59 @@ export class WritingWorkspaceManager {
     const info = await stat(target)
     if (!info.isFile() || info.size > maxPdfBytes) throw new Error('PDF 文件不存在或过大。')
     return new Uint8Array(await readFile(target))
+  }
+
+  async inverseSearch(folderPath: string, page: number, x: number, y: number): Promise<WritingSourceLocation | null> {
+    if (!Number.isInteger(page) || page < 1 || page > 10_000 || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 100_000 || y > 100_000) {
+      throw new Error('PDF 定位参数无效。')
+    }
+    const root = await requireRoot(folderPath)
+    const build = join(root, '.build')
+    if (!(await statOrNull(build))?.isDirectory()) throw new Error('PDF 构建目录不存在，请先编译。')
+    const pdf = await statOrNull(join(build, 'manuscript.pdf'))
+    const sync = await statOrNull(join(build, 'manuscript.synctex.gz')) ?? await statOrNull(join(build, 'manuscript.synctex'))
+    if (!pdf?.isFile()) throw new Error('PDF 文件不存在，请先编译。')
+    if (!sync?.isFile()) throw new Error('这个 PDF 没有 SyncTeX 映射，请在应用内重新编译。')
+    const env = { ...process.env }
+    delete env.SYNCTEX_EDITOR
+    let output: string
+    try {
+      const result = await execFileAsync('synctex', ['edit', '-o', `${page}:${x.toFixed(2)}:${y.toFixed(2)}:.build/manuscript.pdf`], {
+        cwd: root, env, windowsHide: true, timeout: 10_000, maxBuffer: 128 * 1024, encoding: 'utf8'
+      })
+      output = result.stdout ?? ''
+    } catch (error) {
+      const failure = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
+      if (failure.code === 'ENOENT') throw new Error('找不到 synctex，请安装 TeX Live 或 MiKTeX 并配置 PATH。')
+      throw new Error((failure.stderr || failure.stdout || failure.message).trim().slice(-500) || 'SyncTeX 定位失败。')
+    }
+    let input = ''
+    let line = 0
+    let column = 0
+    const results: { input: string; line: number; column: number }[] = []
+    for (const record of output.split(/\r?\n/)) {
+      if (record.startsWith('Input:')) input = record.slice(6).trim()
+      else if (record.startsWith('Line:')) line = Number(record.slice(5).trim())
+      else if (record.startsWith('Column:')) column = Number(record.slice(7).trim())
+      else if (record === 'SyncTeX result end') {
+        if (input && Number.isInteger(line) && line > 0) results.push({ input, line, column })
+        input = ''
+        line = 0
+        column = 0
+      }
+    }
+    if (input && Number.isInteger(line) && line > 0) results.push({ input, line, column })
+    for (const result of results) {
+      const targets = isAbsolute(result.input) ? [result.input] : [resolve(root, result.input), resolve(build, result.input)]
+      for (const target of targets) {
+        const path = relative(root, target).replace(/\\/g, '/')
+        if (extname(path).toLowerCase() !== '.tex') continue
+        try { await sourcePath(root, path) }
+        catch { continue }
+        return { path, line: result.line, column: Number.isInteger(result.column) && result.column > 0 ? result.column : 0 }
+      }
+    }
+    return null
   }
 
   async readCompileLog(folderPath: string): Promise<string | null> {
