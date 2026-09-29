@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import type { SessionProvider, SessionTerminalEvent } from '../../shared/sessions'
+import { createLightAnsiTransformer } from '../lib/terminalColors'
 import '@xterm/xterm/css/xterm.css'
 
 interface Props {
@@ -23,6 +24,9 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
     let ready = false
     let sequence = 0
     const pending: SessionTerminalEvent[] = []
+    const transformColors = createLightAnsiTransformer()
+    const styles = getComputedStyle(host)
+    const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback
     const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: 'Cascadia Mono, Consolas, monospace',
@@ -30,20 +34,28 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
       lineHeight: 1.28,
       scrollback: 5000,
       theme: {
-        background: '#17251d',
-        foreground: '#d9e9d7',
-        cursor: '#a5d9a5',
-        selectionBackground: '#547d60',
-        black: '#142019',
-        red: '#e99786',
-        green: '#9bd29b',
-        yellow: '#e6c984',
-        blue: '#9fbeec',
-        magenta: '#d6a9d6',
-        cyan: '#94d0cb',
-        white: '#d9e9d7',
-        brightBlack: '#6b8170',
-        brightWhite: '#f7fff5'
+        background: color('--terminal-background', '#fbfcf9'),
+        foreground: color('--terminal-foreground', '#294336'),
+        cursor: color('--terminal-cursor', '#347451'),
+        cursorAccent: color('--terminal-background', '#fbfcf9'),
+        selectionBackground: color('--terminal-selection', '#cce2cf'),
+        selectionForeground: color('--terminal-foreground', '#294336'),
+        black: '#263c30',
+        red: '#9d433a',
+        green: '#246944',
+        yellow: '#78551e',
+        blue: '#335d89',
+        magenta: '#764b80',
+        cyan: '#2d696e',
+        white: '#405847',
+        brightBlack: '#536856',
+        brightRed: '#a0443b',
+        brightGreen: '#286d45',
+        brightYellow: '#795922',
+        brightBlue: '#3a648e',
+        brightMagenta: '#794f83',
+        brightCyan: '#2d656b',
+        brightWhite: '#263c30'
       }
     })
     const fit = new FitAddon()
@@ -53,7 +65,7 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
     function apply(event: SessionTerminalEvent) {
       if (event.sequence <= sequence) return
       sequence = event.sequence
-      if (event.type === 'data') terminal.write(event.data)
+      if (event.type === 'data') terminal.write(transformColors(event.data))
       else {
         terminal.options.disableStdin = true
         onStatus(terminalId, provider, false, event.exitCode)
@@ -85,7 +97,7 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
 
     void api.sessionTerminalSnapshot(terminalId).then((snapshot) => {
       if (disposed) return
-      terminal.write(snapshot.output)
+      terminal.write(transformColors(snapshot.output))
       sequence = snapshot.sequence
       terminal.options.disableStdin = !snapshot.running
       onStatus(terminalId, provider, snapshot.running, snapshot.exitCode)

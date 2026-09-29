@@ -89,6 +89,7 @@ export class SessionTerminalManager {
     )
     env.TERM = 'xterm-256color'
     env.COLORTERM = 'truecolor'
+    env.COLORFGBG = '0;15'
     const terminalId = randomUUID()
     env.PATH = withCliPath(env.PATH)
     env.REPAPER_ROOT = folderPath

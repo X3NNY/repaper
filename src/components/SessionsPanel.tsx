@@ -37,6 +37,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
   const [loadingCodex, setLoadingCodex] = useState(false)
   const [loadingClaude, setLoadingClaude] = useState(false)
   const [scanningCodexAll, setScanningCodexAll] = useState(false)
+  const [scanningClaudeAll, setScanningClaudeAll] = useState(false)
   const [launching, setLaunching] = useState<string | null>(null)
   const [listErrors, setListErrors] = useState<Record<SessionProvider, string>>({ codex: '', claude: '' })
   const [terminalError, setTerminalError] = useState('')
@@ -86,25 +87,41 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
     }
   }, [api, folderPath])
 
-  const refreshClaude = useCallback(async (cursor?: string) => {
+  const refreshClaude = useCallback(async (cursor?: string, scanAll = false) => {
     if (!api || !folderPath) return
     const requestedFolder = folderPath
     const requestId = ++claudeRequestRef.current
     setLoadingClaude(true)
+    setScanningClaudeAll(scanAll)
     try {
-      const page = await api.claudeListSessions(folderPath, cursor)
-      if (folderRef.current !== requestedFolder || claudeRequestRef.current !== requestId) return
-      setClaudeSessions((current) => cursor
-        ? [...current, ...page.sessions.filter((session) => !current.some((item) => item.id === session.id))]
-        : page.sessions)
-      setClaudeCursor(page.nextCursor)
+      const sessions: SessionSummary[] = []
+      const seenCursors = new Set<string>()
+      let nextCursor = cursor
+      let remainingCursor: string | null = null
+      while (true) {
+        const page = await api.claudeListSessions(folderPath, nextCursor)
+        if (folderRef.current !== requestedFolder || claudeRequestRef.current !== requestId) return
+        sessions.push(...page.sessions)
+        remainingCursor = page.nextCursor
+        if (!scanAll || !remainingCursor) break
+        if (seenCursors.has(remainingCursor)) throw new Error('Claude Code 会话分页出现重复位置。')
+        seenCursors.add(remainingCursor)
+        nextCursor = remainingCursor
+      }
+      setClaudeSessions((current) => cursor && !scanAll
+        ? [...current, ...sessions.filter((session) => !current.some((item) => item.id === session.id))]
+        : sessions)
+      setClaudeCursor(scanAll ? null : remainingCursor)
       setListErrors((current) => ({ ...current, claude: '' }))
     } catch (reason) {
       if (folderRef.current === requestedFolder && claudeRequestRef.current === requestId) {
         setListErrors((current) => ({ ...current, claude: reason instanceof Error ? reason.message : '读取 Claude Code 会话失败。' }))
       }
     } finally {
-      if (folderRef.current === requestedFolder && claudeRequestRef.current === requestId) setLoadingClaude(false)
+      if (folderRef.current === requestedFolder && claudeRequestRef.current === requestId) {
+        setLoadingClaude(false)
+        setScanningClaudeAll(false)
+      }
     }
   }, [api, folderPath])
 
@@ -118,6 +135,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
     setSelectedTerminalId(null)
     setCodexCursor(null)
     setClaudeCursor(null)
+    setScanningClaudeAll(false)
     setListErrors({ codex: '', claude: '' })
     setTerminalError('')
     if (!folderPath || !api) return
@@ -238,7 +256,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
           return <div className="session-group" key={provider}>
             <div className="session-group-label"><span>{provider === 'codex' ? <TerminalSquare size={15} /> : <Code2 size={15} />}{providerNames[provider]}</span><span>{sessions.length}</span></div>
             {listErrors[provider] ? <div className="session-group-error"><CircleAlert size={15} />{listErrors[provider]}</div> : null}
-            {loading && !sessions.length ? <div className="session-group-state"><LoaderCircle size={17} className="spin" /> {provider === 'codex' && scanningCodexAll ? '正在扫描旧会话…' : '正在读取会话…'}</div> : null}
+            {loading && !sessions.length ? <div className="session-group-state"><LoaderCircle size={17} className="spin" /> {provider === 'codex' && scanningCodexAll || provider === 'claude' && scanningClaudeAll ? '正在扫描会话…' : '正在读取会话…'}</div> : null}
             {!loading && !sessions.length && !newTerminals.length ? <div className="session-group-state">暂无{providerNames[provider]}会话</div> : null}
             {newTerminals.map((terminal) => <button className={`codex-thread ${selectedTerminalId === terminal.id ? 'active' : ''}`} key={terminal.id} onClick={() => setSelectedTerminalId(terminal.id)}><span className="codex-thread-icon"><TerminalSquare size={16} /></span><span className="codex-thread-copy"><strong>新建{providerNames[provider]}会话</strong><small>{terminal.running ? '终端运行中' : '终端已结束'}</small></span></button>)}
             {sessions.map((session) => {
@@ -249,7 +267,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
           </div>
         })}
       </div>
-      <div className="codex-list-footer"><button onClick={() => void refreshCodex(undefined, true)} disabled={loadingCodex} title="重新扫描 Codex 本地会话日志，可能需要几十秒"><Search size={13} /> {scanningCodexAll ? '扫描中…' : '扫描 Codex 旧会话'}</button></div>
+      <div className="codex-list-footer"><button onClick={() => { void refreshCodex(undefined, true); void refreshClaude(undefined, true) }} disabled={loadingCodex || loadingClaude} title="扫描 Codex 和 Claude Code 的本地会话，可能需要几十秒"><Search size={13} /> {scanningCodexAll || scanningClaudeAll ? '扫描中…' : '扫描会话'}</button></div>
     </aside>
     <div className="codex-conversation">
       <div className="codex-conversation-head"><div><strong>{selected ? selectedSession?.title || (selected.sessionId ? `${providerNames[selected.provider]} 会话` : `新建 ${providerNames[selected.provider]} 会话`) : '会话终端'}</strong><span>{selected ? selected.running ? `${providerNames[selected.provider]} 运行中` : `终端已退出${selected.exitCode === null ? '' : ` · ${selected.exitCode}`}` : '选择会话开始'}</span></div>{selected ? <button className="small-button codex-terminal-close" onClick={() => void closeTerminal(selected.id)}><X size={14} /> 关闭终端</button> : null}</div>
