@@ -6,6 +6,7 @@ import {
   RefreshCw, TerminalSquare, X
 } from 'lucide-react'
 import type { ExperimentItem, ExperimentOverview, ExperimentOverviewSection, ExperimentResultBlock, ExperimentRun, ExperimentWorkspace } from '../../shared/experiments'
+import { experimentActivities, experimentReadingKey, loadExperimentReadRecords, markExperimentRead, type ExperimentActivity, type ExperimentReadRecords } from '../lib/experimentReading'
 
 interface Props {
   folderPath?: string
@@ -15,6 +16,10 @@ interface Props {
 
 const statusName: Record<ExperimentRun['status'], string> = {
   running: '运行中', succeeded: '完成', failed: '失败', interrupted: '已中断', imported: '历史导入'
+}
+
+interface LoadedExperiments extends ExperimentWorkspace {
+  activities: Record<string, ExperimentActivity>
 }
 
 const exampleCommands = [
@@ -30,6 +35,11 @@ function time(value: string): string {
 
 function revisionTime(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value))
+}
+
+function activityTime(value: string): string {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
 function runTone(status: ExperimentRun['status']): string {
@@ -260,27 +270,77 @@ function ExperimentContent({ item, state, folderPath }: { item: ExperimentItem; 
 
 export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTarget }: Props) {
   const api = window.paperApi
-  const [state, setState] = useState<ExperimentWorkspace | null>(null)
+  const [state, setState] = useState<LoadedExperiments | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [readError, setReadError] = useState('')
+  const [readRecords, setReadRecords] = useState<ExperimentReadRecords>({})
+  const [readingFocused, setReadingFocused] = useState(() => document.visibilityState === 'visible' && document.hasFocus())
   const [selection, setSelection] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
+  const refreshSequence = useRef(0)
 
   const refresh = useCallback(async () => {
     if (!api || !folderPath) return
-    try { setState(await api.experimentsGet(folderPath)); setError('') }
-    catch (reason) { setError(String(reason)) }
-    finally { setLoading(false) }
+    const sequence = ++refreshSequence.current
+    try {
+      const workspace = await api.experimentsGet(folderPath)
+      const activities = await experimentActivities(workspace)
+      if (sequence !== refreshSequence.current) return
+      setReadRecords(loadExperimentReadRecords(workspace.rootPath))
+      setState({ ...workspace, activities })
+      setError('')
+    } catch (reason) { if (sequence === refreshSequence.current) setError(String(reason)) }
+    finally { if (sequence === refreshSequence.current) setLoading(false) }
   }, [api, folderPath])
 
   useEffect(() => {
     setState(null); setLoading(true); setSelection(null)
+    setReadRecords({}); setReadError(''); setError('')
     void refresh()
-    if (!api || !folderPath) return
-    return api.onExperimentsChanged((changedFolder) => { if (changedFolder.toLowerCase() === folderPath.toLowerCase()) void refresh() })
+    const unsubscribe = api && folderPath ? api.onExperimentsChanged((changedFolder) => {
+      if (changedFolder.toLowerCase() === folderPath.toLowerCase()) void refresh()
+    }) : undefined
+    return () => { ++refreshSequence.current; unsubscribe?.() }
   }, [api, folderPath, refresh])
+
+  useEffect(() => {
+    const updateFocus = () => setReadingFocused(document.visibilityState === 'visible' && document.hasFocus())
+    window.addEventListener('focus', updateFocus)
+    window.addEventListener('blur', updateFocus)
+    document.addEventListener('visibilitychange', updateFocus)
+    return () => {
+      window.removeEventListener('focus', updateFocus)
+      window.removeEventListener('blur', updateFocus)
+      document.removeEventListener('visibilitychange', updateFocus)
+    }
+  }, [])
+
+  const readingRoot = state?.rootPath
+  useEffect(() => {
+    if (!readingRoot) return
+    const syncReading = (event: StorageEvent) => {
+      if (event.key === null || event.key === experimentReadingKey(readingRoot)) setReadRecords(loadExperimentReadRecords(readingRoot))
+    }
+    window.addEventListener('storage', syncReading)
+    return () => window.removeEventListener('storage', syncReading)
+  }, [readingRoot])
+
+  const active = selection && (state?.groups.some((group) => group.key === selection) || state?.experiments.some((item) => item.id === selection)) ? selection : state?.groups[0]?.key ?? null
+  const selectedGroup = state?.groups.find((group) => group.key === active)
+  const selectedExperiment = state?.experiments.find((item) => item.id === active)
+  const selectedExperimentId = selectedExperiment?.id
+  const selectedRevision = selectedExperimentId ? state?.activities[selectedExperimentId]?.revision : undefined
+
+  useEffect(() => {
+    if (!readingRoot || !selectedExperimentId || !selectedRevision || loading || error || !readingFocused || readRecords[selectedExperimentId]?.revision === selectedRevision) return
+    try {
+      setReadRecords(markExperimentRead(readingRoot, selectedExperimentId, selectedRevision))
+      setReadError('')
+    } catch { setReadError('无法保存实验阅读状态，请检查本地存储空间。') }
+  }, [error, loading, readRecords, readingFocused, readingRoot, selectedExperimentId, selectedRevision])
 
   const copyExample = async () => {
     try { await navigator.clipboard.writeText(exampleCommands); setCopied(true); setTimeout(() => setCopied(false), 1800) }
@@ -289,18 +349,24 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
 
   if (!folderPath) return <div className="codex-connect-empty"><div className="empty-icon"><FolderOpen size={28} /></div><h2>这篇论文尚未关联文件夹</h2><p>选择工作目录后，实验记录会保存在其中的 .repaper/experiments/。</p><button className="button button-primary" onClick={onChooseFolder}><FolderOpen size={17} /> 选择文件夹</button></div>
 
-  const active = selection && (state?.groups.some((group) => group.key === selection) || state?.experiments.some((item) => item.id === selection)) ? selection : state?.groups[0]?.key ?? null
-  const selectedGroup = state?.groups.find((group) => group.key === active)
-  const selectedExperiment = state?.experiments.find((item) => item.id === active)
+  const unreadCount = state?.experiments.filter((item) => readRecords[item.id]?.revision !== state.activities[item.id].revision).length ?? 0
 
   return <>
     {toolbarTarget ? createPortal(<button className="button button-light" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />刷新实验</button>, toolbarTarget) : null}
     <div className="experiments-shell">
-    {error ? <div className="experiment-error"><CircleAlert size={16} />{error}</div> : null}
-    <div className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong><span>{state?.experiments.length ?? 0}</span></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length ? <div className="experiments-groups">{state.groups.map((group) => {
+    {error || readError ? <div className="experiment-error"><CircleAlert size={16} />{error || readError}</div> : null}
+    <div className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong>{unreadCount ? <span className="experiments-unread-count">{unreadCount} 未读</span> : null}<span>{state?.experiments.length ?? 0}</span></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length ? <div className="experiments-groups">{state.groups.map((group) => {
       const items = state.experiments.filter((item) => item.groupKey === group.key)
       const collapsed = collapsedGroups.has(group.key)
-      return <div className="experiments-group" key={group.key}><div className="experiments-group-heading"><button className="experiments-group-toggle" onClick={() => setCollapsedGroups((previous) => { const next = new Set(previous); if (next.has(group.key)) next.delete(group.key); else next.add(group.key); return next })} aria-label={collapsed ? `展开 ${group.title}` : `收起 ${group.title}`} aria-expanded={!collapsed}><ChevronDown size={14} /></button><button className={`experiments-group-button ${active === group.key ? 'selected' : ''}`} onClick={() => setSelection(group.key)}><span>{group.title}</span><small>{items.length}</small></button></div>{collapsed ? null : <div className="experiments-child-list">{items.map((item) => <button key={item.id} className={`experiments-child ${active === item.id ? 'selected' : ''}`} onClick={() => setSelection(item.id)}><span className="experiment-child-dot" /><span>{item.title}</span></button>)}</div>}</div>
+      return <div className="experiments-group" key={group.key}><div className="experiments-group-heading"><button className="experiments-group-toggle" onClick={() => setCollapsedGroups((previous) => { const next = new Set(previous); if (next.has(group.key)) next.delete(group.key); else next.add(group.key); return next })} aria-label={collapsed ? `展开 ${group.title}` : `收起 ${group.title}`} aria-expanded={!collapsed}><ChevronDown size={14} /></button><button className={`experiments-group-button ${active === group.key ? 'selected' : ''}`} onClick={() => setSelection(group.key)}><span>{group.title}</span><small>{items.length}</small></button></div>{collapsed ? null : <div className="experiments-child-list">{items.map((item) => {
+        const activity = state.activities[item.id]
+        const unread = readRecords[item.id]?.revision !== activity.revision
+        const readLabel = unread ? '未读' : '已读'
+        return <button key={item.id} className={`experiments-child ${unread ? 'unread' : 'read'} ${active === item.id ? 'selected' : ''}`} onClick={() => setSelection(item.id)} data-experiment-id={item.id} data-read-status={unread ? 'unread' : 'read'} title={`${item.title} · ${readLabel}`} aria-label={`${item.title}，${readLabel}，最后更新 ${activityTime(activity.updatedAt)}，${activity.runCount} 次运行`} aria-current={active === item.id ? 'true' : undefined}>
+          <span className="experiment-child-dot" aria-hidden="true" />
+          <span className="experiment-child-main"><span className="experiment-child-title">{item.title}</span><small className="experiment-child-meta"><time dateTime={activity.updatedAt || undefined} title={`最后更新：${activity.updatedAt ? revisionTime(activity.updatedAt) : '—'}`}>{activityTime(activity.updatedAt)}</time><span>{activity.runCount} 次运行</span></small></span>
+        </button>
+      })}</div>}</div>
     })}</div> : <div className="experiments-tree-empty">还没有实验组。Agent 创建后会自动出现。</div>}<div className="experiments-tree-foot"><Clock3 size={13} />本地文件自动同步</div></aside>
     <main className="experiments-main">
       {loading ? <div className="experiments-main-empty">正在读取实验记录…</div>

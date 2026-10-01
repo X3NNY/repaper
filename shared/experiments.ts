@@ -79,6 +79,7 @@ export interface ExperimentRun {
   provider: 'codex' | 'claude' | ''
   sessionId: string
   terminalId: string
+  updatedAt?: string
   metrics: Record<string, number>
   metricSource: string
   artifacts: string[]

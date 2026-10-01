@@ -572,6 +572,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .experiments-tree-toggle:hover { background: #e5efe3; }
 .experiments-tree-head strong { flex: 1; }
 .experiments-tree-head span { color: #99ad9d; font-size: 11px; }
+.experiments-tree-head .experiments-unread-count { padding: 2px 6px; border-radius: 4px; background: #e4eee1; color: #47734e; font-size: 10px; white-space: nowrap; }
 .tree-collapsed .experiments-tree-head { justify-content: center; padding: 0; }
 .tree-collapsed .experiments-tree-head strong, .tree-collapsed .experiments-tree-head span, .tree-collapsed .experiments-groups, .tree-collapsed .experiments-tree-foot, .tree-collapsed .experiments-tree-empty, .tree-collapsed .experiments-loading { display: none; }
 .experiments-groups { overflow-y: auto; padding: 13px 9px; }
@@ -582,16 +583,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .experiments-group-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .experiments-group-button, .experiments-child { display: flex; align-items: center; width: 100%; min-width: 0; border: 0; background: transparent; color: #587261; text-align: left; }
 .experiments-group-button { flex: 1; width: auto; min-height: 35px; padding: 5px 8px; gap: 7px; border-radius: 6px; font-size: 11px; font-weight: 700; }
-.experiments-group-button > span, .experiments-child > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.experiments-group-button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .experiments-group-button > span { flex: 1; }
 .experiments-group-button small { color: #9aab9e; font-size: 10px; }
 .experiments-group-button:hover, .experiments-child:hover { background: #e8f0e7; }
 .experiments-group-button.selected { background: #dfece0; color: #2c6846; }
 .experiments-child-list { margin: 1px 0 0 15px; padding-left: 10px; border-left: 1px solid #dce7dc; }
-.experiments-child { min-height: 31px; gap: 8px; padding: 4px 8px; border-radius: 6px; font-size: 11px; }
+.experiments-child { align-items: flex-start; min-height: 47px; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
 .experiments-child.selected { background: #e2eee1; color: #275f3f; font-weight: 700; }
-.experiment-child-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #adc5ae; }
-.experiments-child.selected .experiment-child-dot { background: #3d8a58; }
+.experiment-child-main { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.experiment-child-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
+.experiment-child-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #8c9f90; font-size: 10px; font-weight: 400; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.experiment-child-meta time { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.experiment-child-meta > span { flex-shrink: 0; }
+.experiments-child.selected .experiment-child-meta { color: #72927a; }
+.experiment-child-dot { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 4px; border: 1px solid #b2c6b3; border-radius: 50%; background: transparent; }
+.experiments-child.unread .experiment-child-dot { border-color: #3d8a58; background: #3d8a58; box-shadow: 0 0 0 2px #e1ebdc; }
+.experiments-child.selected.read .experiment-child-dot { border-color: #86aa8d; }
 .experiments-tree-empty { padding: 22px 17px; color: #9ba99d; font-size: 11px; line-height: 1.7; }
 .experiments-tree-foot { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 15px 20px; border-top: 1px solid #e6ece4; color: #a0afa2; font-size: 10px; }
 .experiments-loading { display: flex; align-items: center; gap: 8px; padding: 22px 19px; color: #96a99a; font-size: 11px; }

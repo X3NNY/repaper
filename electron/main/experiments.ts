@@ -104,11 +104,15 @@ export async function loadExperiments(root: string): Promise<ExperimentWorkspace
     readDirectory<ExperimentItem>(join(store, 'items')),
     readDirectory<ExperimentRun>(join(store, 'runs'))
   ])
-  await Promise.all(runs.filter((run) => run.status === 'running' && run.launcherPid && !processIsAlive(run.launcherPid)).map(async (run) => {
-    run.status = 'interrupted'
-    run.endedAt = now()
-    run.error = '记录进程已退出，实验是否完成尚未确认。'
-    await atomicJson(runPath(root, run.id), run)
+  await Promise.all(runs.map(async (run) => {
+    if (!run.updatedAt) run.updatedAt = (await stat(runPath(root, run.id))).mtime.toISOString()
+    if (run.status === 'running' && run.launcherPid && !processIsAlive(run.launcherPid)) {
+      run.status = 'interrupted'
+      run.endedAt = now()
+      run.updatedAt = run.endedAt
+      run.error = '记录进程已退出，实验是否完成尚未确认。'
+      await atomicJson(runPath(root, run.id), run)
+    }
   }))
   groups.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   experiments.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
@@ -364,7 +368,7 @@ export async function createRun(root: string, experimentId: string, command: str
     git: await gitSnapshot(cwd), provider: provider === 'codex' || provider === 'claude' ? provider : '',
     sessionId: process.env.REPAPER_SESSION_ID ?? '', terminalId: process.env.REPAPER_TERMINAL_ID ?? '',
     metrics: {}, metricSource: '', artifacts: artifacts.map((path) => displayPath(root, resolve(cwd, path))),
-    logPath: `.repaper/experiments/logs/${id}.log`, summary: '', error: ''
+    logPath: `.repaper/experiments/logs/${id}.log`, summary: '', error: '', updatedAt: now()
   }
   await atomicJson(runPath(root, id), run)
   return run
@@ -420,7 +424,7 @@ export async function importRun(root: string, experimentId: string, sources: str
     startedAt: unique.map((item) => item.modifiedAt).sort().at(-1)!, endedAt: '', exitCode: null,
     git: null, provider: '', sessionId: '', terminalId: '',
     metrics: { ...detectedMetrics, ...metrics }, metricSource, artifacts: unique.map((item) => item.path),
-    logPath: '', summary: summary.trim(), error: '', importedAt
+    logPath: '', summary: summary.trim(), error: '', importedAt, updatedAt: now()
   }
   await atomicJson(path, run)
   return run
@@ -445,9 +449,10 @@ export async function completeRun(root: string, id: string, exitCode: number | n
       metricSource = displayPath(root, path)
     } catch (reason) { error = [error, `无法读取指标：${String(reason)}`].filter(Boolean).join('\n') }
   }
+  const updatedAt = now()
   const updated: ExperimentRun = {
     ...run, status: exitCode === null ? 'interrupted' : exitCode === 0 ? 'succeeded' : 'failed',
-    exitCode, endedAt: now(), error, metrics, metricSource
+    exitCode, endedAt: updatedAt, updatedAt, error, metrics, metricSource
   }
   await atomicJson(runPath(root, id), updated)
   return updated
@@ -460,7 +465,7 @@ export async function annotateRun(root: string, id: string, values: {
   if (values.label && values.label.length > 120) throw new Error('运行名称最长 120 字。')
   const hasNewMetrics = Object.keys(values.metrics ?? {}).length > 0
   const updated: ExperimentRun = {
-    ...run, label: values.label?.trim() ?? run.label, summary: values.summary?.trim() ?? run.summary,
+    ...run, updatedAt: now(), label: values.label?.trim() ?? run.label, summary: values.summary?.trim() ?? run.summary,
     metrics: { ...run.metrics, ...values.metrics },
     metricSource: values.source ? displayPath(root, resolve(run.cwd, values.source)) : hasNewMetrics ? run.metricSource || run.logPath : run.metricSource,
     artifacts: [...new Set([...run.artifacts, ...(values.artifacts ?? []).map((path) => displayPath(root, resolve(run.cwd, path)))])]
