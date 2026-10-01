@@ -34,6 +34,8 @@ npm run dev
 
 全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments` 与 `repaper-submissions` 三个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录维护 `AGENTS.md` 的 re:paper 说明；已有文件中的其他内容会保留。空目录到此为止，不会提前生成文稿或虚构实验记录。通过应用启动 Claude Code 时，会提示它读取同一份 `AGENTS.md`；已有 `CLAUDE.md` 的项目也会同步更新其中的 re:paper 区块。
 
+生成的 `AGENTS.md` 按论文、实验、投稿分别说明查看和修改入口：论文通过文件工具或当前会话可用的写作 SKILL 直接读写 `.paper/` 源文件，版本来自该目录的 Git；实验使用 `repaper-experiments` 与 `repaper list`／`show`／`experiment`／`run`；投稿使用 `repaper-submissions` 与 `repaper submission timeline`／`show`／`create`／`update`／`event`。说明只记录接口和数据位置，当前内容由会话按需读取。已有项目可再次运行 `repaper init` 刷新这段说明；通过应用新建或恢复 Agent 终端时也会自动刷新。
+
 已有内容时，初始化 SKILL 会判断最新的可编辑 LaTeX 主文件，使用 `repaper writing import <主文件> --paper <目录>` 把所选源目录中的 LaTeX 文件和相关图表资源复制到 `.paper/`，以 `manuscript.tex` 作为写作入口，并初始化该目录的 Git。原文件不会移动或覆盖；已有非空 `.paper/` 不会被自动替换。若只有 PDF、Word 等格式而没有 LaTeX 源文件，SKILL 会说明限制并保留原文件。
 
 历史实验结果可通过 `repaper run import <组>/<实验> --source <已有结果文件> --summary <说明>` 导入。写作主文件和历史证据的相对路径均相对于论文工作目录。同一条历史证据可重复提供 `--source`，已核实的指标可用 `--metric 名称=数值`；顶层数值字段也会从 JSON 证据中读取。历史条目显示为“历史导入”，保留原文件路径与文件时间，不会伪装成新执行的成功运行。相同路径与内容重复导入不会增加条目。

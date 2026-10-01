@@ -1,6 +1,6 @@
 ---
 name: repaper-init
-description: Initialize a local paper directory for re:paper, including adoption of existing LaTeX sources, historical experiment evidence, and managed AGENTS.md guidance for submission history. Use when a user links a new or populated research folder to re:paper, not for ordinary experiment runs.
+description: Initialize a local paper directory for re:paper, adopt existing LaTeX sources and historical experiment evidence, and maintain AGENTS.md entry points for manuscript, experiment, and submission work. Use when linking or refreshing a paper workspace.
 metadata:
   version: "1.4.0"
 ---
@@ -9,7 +9,17 @@ metadata:
 
 Work in the paper folder selected by the user. Inspect its contents before making changes. The `repaper` CLI is available in re:paper sessions; outside the app, use the sibling `repaper-experiments/scripts/repaper.cjs` with Node.js or pass `--paper <folder>` to an installed launcher.
 
-Initialization is idempotent even when the project marker already exists. After running it, confirm that the managed `AGENTS.md` section tells future sessions to read the current submission route with `repaper submission timeline --json`, then use `repaper submission show <submission-id> --json` for full events and review sources. It must describe the interface, not copy a snapshot of mutable submission data into `AGENTS.md`. If an older launcher cannot produce this block, report that it needs updating rather than hand-editing unrelated instructions.
+Initialization is idempotent even when the project marker already exists. Use `repaper init` to refresh the generated instructions as well as to prepare a new project.
+
+## Generated AGENTS.md guidance
+
+After initialization, confirm that the managed section gives future sessions these task entry points:
+
+- Manuscript: read and edit the active sources in `.paper/`, starting at `manuscript.tex` and following included files, bibliography, and figures. Use the Git repository inside `.paper/` for manuscript versions. `repaper-init` handles source adoption; routine manuscript edits use file tools or a writing skill available in that session.
+- Experiments: use `repaper-experiments` to inspect current records with `repaper list experiments --json` and `repaper show <group>/<experiment> --json`, then maintain them through the experiment and run CLI commands.
+- Submissions: use `repaper-submissions`, start with `repaper submission timeline --json`, and read complete events and sources with `repaper submission show <submission-id> --json`. Add or update attempts and events through the CLI, retain original review wording and ratings, and check the actual submitted manuscript version.
+
+The managed section describes supported interfaces and storage locations; mutable manuscript text, results, and submission history stay in their own stores. Refresh only the re:paper block and preserve other instructions. If an older launcher cannot generate these entry points, update the installed re:paper Skills and CLI from the app's settings and rerun initialization; report the limitation if that update is unavailable.
 
 ## Empty folder
 
