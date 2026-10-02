@@ -13,11 +13,18 @@ import { loadSubmissions, saveSubmission, saveSubmissionEvent } from '../electro
 import type { ExperimentOverviewDraft, ExperimentResultBlock, ExperimentSetting } from '../shared/experiments'
 import { submissionEventSortKey } from '../shared/submissions'
 import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/submissions'
+import { loadOverview, publishJourney, saveOverviewNote } from '../electron/main/overview'
+import type { OverviewDraft, OverviewNoteDraft } from '../shared/overview'
 
 const HELP = `re:paper 项目命令
 
   repaper init [--paper <目录>]
   repaper writing import <LaTeX主文件> [--paper <目录>]
+  repaper overview context [--json]
+  repaper overview show [--json]
+  repaper overview publish --file <研究脉络JSON>
+  repaper overview note --text <思考原文> [--date <发生日期>]
+  repaper overview note --file <思考JSON> [--id <记录ID>]
   repaper submission list [--json]
   repaper submission timeline [--json]
   repaper submission show <投稿ID> [--json]
@@ -177,6 +184,32 @@ async function main(): Promise<void> {
     return
   }
   const root = await findProjectRoot(process.cwd(), extracted.paper)
+  if (command === 'overview') {
+    const verb = args.shift()
+    if (verb === 'context' || verb === 'show') {
+      if (args.some(arg => arg !== '--json')) throw new Error('用法：repaper overview context|show [--json]')
+      const state = await loadOverview(root)
+      output(state, args.includes('--json'))
+      return
+    }
+    if (verb === 'publish') {
+      const parsed = parse(args, ['file'])
+      if (parsed.positionals.length) throw new Error('用法：repaper overview publish --file <JSON>')
+      const draft = await projectJsonFile(root, requireArgument(one(parsed, 'file'), 'repaper overview publish --file <JSON>')) as OverviewDraft
+      await publishJourney(root, draft)
+      output('已更新研究脉络；人工修改和原始材料已保留。', false)
+      return
+    }
+    if (verb === 'note') {
+      const parsed = parse(args, ['file', 'text', 'date', 'id'])
+      if (parsed.positionals.length || Boolean(one(parsed, 'file')) === Boolean(one(parsed, 'text'))) throw new Error('用法：repaper overview note --text <原文> [--date <日期>] 或 --file <JSON> [--id <ID>]')
+      const draft = one(parsed, 'file') ? await projectJsonFile(root, one(parsed, 'file')!) as OverviewNoteDraft : { text: one(parsed, 'text')!, occurredAt: one(parsed, 'date') }
+      await saveOverviewNote(root, draft, one(parsed, 'id'))
+      output('已保存思考记录。', false)
+      return
+    }
+    throw new Error('用法：repaper overview context|show|publish|note ...')
+  }
   if (command === 'writing') {
     const verb = args.shift()
     if (verb !== 'import') throw new Error('用法：repaper writing import <LaTeX主文件>')

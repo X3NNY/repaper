@@ -5,6 +5,7 @@ import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminal
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../../shared/writing'
 import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
+import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -13,6 +14,16 @@ if (process.platform === 'win32') {
 }
 
 const paperApi = {
+  overviewGet: (folderPath: string, project?: OverviewProject): Promise<OverviewWorkspace> => ipcRenderer.invoke('overview:get', folderPath, project),
+  overviewNoteSave: (folderPath: string, draft: OverviewNoteDraft, id?: string): Promise<void> => ipcRenderer.invoke('overview:note:save', folderPath, draft, id),
+  overviewNodeEdit: (folderPath: string, id: string, edit: OverviewEdit): Promise<void> => ipcRenderer.invoke('overview:node:edit', folderPath, id, edit),
+  overviewAgentOpen: (folderPath: string, provider: SessionProvider, permissionMode: AgentPermissionMode): Promise<SessionTerminalInfo> => ipcRenderer.invoke('overview:agent:open', folderPath, provider, permissionMode),
+  overviewReadImage: (folderPath: string, path: string): Promise<string> => ipcRenderer.invoke('overview:image:read', folderPath, path),
+  onOverviewChanged: (callback: (folderPath: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, folderPath: string) => callback(folderPath)
+    ipcRenderer.on('overview:changed', listener)
+    return () => ipcRenderer.removeListener('overview:changed', listener)
+  },
   loadWorkspace: (): Promise<WorkspaceData> => ipcRenderer.invoke('workspace:load'),
   saveWorkspace: (workspace: WorkspaceData): Promise<void> => ipcRenderer.invoke('workspace:save', workspace),
   chooseFile: (): Promise<string | null> => ipcRenderer.invoke('file:choose'),

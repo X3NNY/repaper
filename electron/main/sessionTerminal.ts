@@ -112,7 +112,7 @@ export class SessionTerminalManager {
       executable = command.executable
       args = [
         ...command.argsPrefix,
-        ...(hasProject ? ['--append-system-prompt', 'This is a re:paper workspace. Read AGENTS.md in the current working directory before working on this project. Follow its task entry points for manuscript, experiment, and submission work; use the relevant skills, active source files, and repaper CLI to fetch current content and apply requested edits.'] : []),
+        ...(hasProject ? ['--append-system-prompt', 'This is a re:paper workspace. Read AGENTS.md in the current working directory before working on this project. Follow its task entry points for manuscript, experiment, submission, and research-journey work; use the relevant skills, active source files, and repaper CLI to fetch current content and apply requested edits.'] : []),
         '--permission-mode', permissionMode === 'full_access' ? 'bypassPermissions' : 'auto',
         ...(sessionId ? createWithId ? ['--session-id', sessionId] : ['--resume', sessionId] : [])
       ]

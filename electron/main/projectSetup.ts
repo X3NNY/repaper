@@ -32,6 +32,13 @@ const instructions = [
   '- Write a draft JSON in the paper folder and save it with `repaper submission create --file <draft.json>`, `repaper submission update <submission-id> --file <draft.json>`, or `repaper submission event <submission-id> --file <event.json>`. To supplement an existing event, use its `--id <event-id>` and current `revision` as `expectedRevision`; reread and merge after a conflict.',
   '- Submission records and original evidence live in `.repaper/submissions/`. A `source.path` from the CLI is relative to that directory. Read the linked source before citing a review or score; keep reviewer text and ratings verbatim, and keep AI interpretation in event-level `summary`.',
   '- Maintain experiment and submission record JSON through the CLI. Older submission entries shown only in the app must be brought into the new timeline with “继续记录” before the CLI can read them.',
+  '',
+  '### Read or maintain the research journey',
+  '',
+  '- Use `repaper-overview` for the overview, research reasoning, claims and evidence, stopped routes, and submission-driven revisions. Start with `repaper overview context --json`; it provides the current revision, source IDs and fingerprints, changed records, saved thinking, and manual overrides. Read the referenced manuscripts, experiment evidence, and original reviews when needed.',
+  '- Record author thinking with `repaper overview note --text <original-text> [--date YYYY-MM-DD]`. To update a note use `repaper overview note --file <note.json> --id <note-id>` and its revision as `expectedRevision`. A recorded decision can establish motivation; chronological proximity cannot.',
+  '- Save incremental, sourced research nodes and relationships with `repaper overview publish --file <draft.json>`. Include the latest `expectedRevision`, inspected `sourceFingerprints`, and node/edge `sourceIds`; reread and merge on conflicts. Keep plans distinct from completed results, preserve earlier claims, negative findings and stopped routes, and retain manual edits.',
+  '- Journey records and note materials live in `.repaper/overview/`. Use the CLI to preserve revisions and source snapshots. Original experiment and submission records remain in their own stores; a journey summary never replaces review wording or ratings. The context index does not automatically recover complete historical Agent conversations.',
   endMarker
 ].join('\n')
 

@@ -10,6 +10,7 @@ import type {
   WritingReviewFile, WritingTemplate, WritingWorkspace
 } from '../../shared/writing'
 import SelectField from './SelectField'
+import type { OverviewFocus } from '../../shared/overview'
 
 const WritingEditor = lazy(() => import('./WritingEditor'))
 const PdfPreview = lazy(() => import('./PdfPreview'))
@@ -18,6 +19,7 @@ interface Props {
   folderPath?: string
   onChooseFolder: () => void
   toolbarTarget: HTMLDivElement | null
+  focusSource?: OverviewFocus | null
 }
 
 interface OpenDocument {
@@ -81,10 +83,11 @@ function ReviewFileList({ changes, selected, onSelect }: { changes: WritingChang
   </button>)}</div>
 }
 
-export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget }: Props) {
+export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget, focusSource }: Props) {
   const api = window.paperApi
   const [workspace, setWorkspace] = useState<WritingWorkspace | null>(null)
   const [loading, setLoading] = useState(true)
+  const sourceRequest = useRef<number | null>(null)
   const [error, setError] = useState('')
   const [template, setTemplate] = useState<WritingTemplate | ''>('')
   const [initializing, setInitializing] = useState(false)
@@ -365,6 +368,21 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
       setError(reason instanceof Error ? reason.message : '无法保存当前文件。')
     }
   }
+
+  useEffect(() => {
+    if (loading || !workspace?.initialized || !focusSource || focusSource.target.type !== 'writing' || sourceRequest.current === focusSource.requestId) return
+    sourceRequest.current = focusSource.requestId
+    const target = focusSource.target
+    void (async () => {
+      if (target.commit) { await startReview(target.commit); return }
+      const path = target.path || 'manuscript.tex'
+      if (!hasFile(workspace.files, path)) { setError('概况引用的文稿文件已不存在：' + path); return }
+      await loadFile(path)
+      if (target.line && documentRef.current.path === path) setJumpTarget({ path, line: target.line, column: 1, requestId: ++jumpRequestRef.current })
+      const parts = path.split('/')
+      setExpanded(current => { const next = new Set(current); for (let index = 1; index < parts.length; index++) next.add(parts.slice(0, index).join('/')); return next })
+    })().catch(reason => setError(reason instanceof Error ? reason.message : '无法打开概况引用的版本。'))
+  }, [focusSource, loading, workspace, loadFile])
 
   async function stopReview() {
     setSelectedHistory('')

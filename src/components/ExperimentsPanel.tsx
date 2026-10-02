@@ -7,11 +7,13 @@ import {
 } from 'lucide-react'
 import type { ExperimentItem, ExperimentOverview, ExperimentOverviewSection, ExperimentResultBlock, ExperimentRun, ExperimentWorkspace } from '../../shared/experiments'
 import { experimentActivities, experimentReadingKey, loadExperimentReadRecords, markExperimentRead, type ExperimentActivity, type ExperimentReadRecords } from '../lib/experimentReading'
+import type { OverviewFocus } from '../../shared/overview'
 
 interface Props {
   folderPath?: string
   onChooseFolder: () => void
   toolbarTarget: HTMLDivElement | null
+  focusSource?: OverviewFocus | null
 }
 
 const statusName: Record<ExperimentRun['status'], string> = {
@@ -161,8 +163,8 @@ function ResultBlock({ block, folderPath, experimentId, revision, runs, onSelect
   </div>
 }
 
-function OverviewRevisionHistory({ revisions }: { revisions: ExperimentOverview[] }) {
-  return <div className="experiment-revision-list">{revisions.map((revision) => <details key={revision.revisionId}>
+function OverviewRevisionHistory({ revisions, focusRevisionId }: { revisions: ExperimentOverview[]; focusRevisionId?: string }) {
+  return <div className="experiment-revision-list">{revisions.map((revision) => <details key={revision.revisionId} data-overview-revision={revision.revisionId} open={revision.revisionId === focusRevisionId}>
     <summary><span>{revisionTime(revision.updatedAt)}</span><span>{revision.changed.map((section) => overviewSectionName[section]).join('、')}</span><ChevronDown size={14} /></summary>
     <div className="experiment-revision-content">
       {revision.subtitle ? <p><strong>副标题</strong>{revision.subtitle}</p> : null}
@@ -179,7 +181,7 @@ function OverviewRevisionHistory({ revisions }: { revisions: ExperimentOverview[
   </details>)}</div>
 }
 
-function ExperimentContent({ item, state, folderPath }: { item: ExperimentItem; state: ExperimentWorkspace; folderPath: string }) {
+function ExperimentContent({ item, state, folderPath, focusSource }: { item: ExperimentItem; state: ExperimentWorkspace; folderPath: string; focusSource?: OverviewFocus | null }) {
   const api = window.paperApi
   const runs = state.runs.filter((run) => run.experimentId === item.id)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -188,6 +190,26 @@ function ExperimentContent({ item, state, folderPath }: { item: ExperimentItem; 
   const [showRevisions, setShowRevisions] = useState(false)
   const [revisions, setRevisions] = useState<ExperimentOverview[]>([])
   const [revisionError, setRevisionError] = useState('')
+  const [sourceError, setSourceError] = useState('')
+  const sourceRequest = useRef<number | null>(null)
+  const focusRevisionId = focusSource?.target.type === 'experiment' && focusSource.target.experimentId === item.id ? focusSource.target.revisionId : undefined
+
+  useEffect(() => {
+    if (!focusSource || focusSource.target.type !== 'experiment' || focusSource.target.experimentId !== item.id || sourceRequest.current === focusSource.requestId) return
+    sourceRequest.current = focusSource.requestId
+    const target = focusSource.target
+    if (target.runId) {
+      if (state.runs.some(run => run.id === target.runId)) { setShowRuns(true); setSelectedRunId(target.runId); setFocusedRunId(target.runId) }
+      else setSourceError('概况引用的运行记录已不存在：' + target.runId)
+    }
+    if (target.revisionId && target.revisionId !== item.overview?.revisionId) setShowRevisions(true)
+  }, [focusSource, item.id, item.overview?.revisionId, state.runs])
+  useEffect(() => {
+    if (!showRevisions || !focusRevisionId || !revisions.length) return
+    const element = [...document.querySelectorAll<HTMLElement>('[data-overview-revision]')].find(item => item.dataset.overviewRevision === focusRevisionId)
+    if (element) element.scrollIntoView({ block: 'center' })
+    else setSourceError('概况引用的实验概览版本已不存在；下方展示可读取的版本。')
+  }, [focusRevisionId, revisions, showRevisions])
   const [copiedOrganize, setCopiedOrganize] = useState(false)
   const drawerCloseRef = useRef<HTMLButtonElement>(null)
   const activeRun = runs.find((run) => run.id === selectedRunId) ?? runs[0]
@@ -242,7 +264,8 @@ function ExperimentContent({ item, state, folderPath }: { item: ExperimentItem; 
       {!overview && (legacyFields.length || runs.length) ? <button className="experiment-history-button" onClick={() => void copyOrganizePrompt()}><Clipboard size={14} />{copiedOrganize ? '已复制' : '复制整理指令'}</button> : null}
     </div></div>
     {subtitle ? <p className="experiment-question">{subtitle}</p> : null}
-    {showRevisions ? <section className="experiment-revisions"><h3>概览更新记录</h3>{revisionError ? <p>{revisionError}</p> : <OverviewRevisionHistory revisions={revisions} />}</section> : null}
+    {sourceError ? <div className="experiment-error"><CircleAlert size={16} />{sourceError}</div> : null}
+    {showRevisions ? <section className="experiment-revisions"><h3>概览更新记录</h3>{revisionError ? <p>{revisionError}</p> : <OverviewRevisionHistory revisions={revisions} focusRevisionId={focusRevisionId} />}</section> : null}
     {hasOverview && overview ? <div className="experiment-overview-grid">
       {overview.designReason ? <section className="experiment-overview-card">
         <div className="experiment-overview-heading"><h3>设计原因</h3></div>
@@ -268,7 +291,7 @@ function ExperimentContent({ item, state, folderPath }: { item: ExperimentItem; 
   </div>
 }
 
-export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTarget }: Props) {
+export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTarget, focusSource }: Props) {
   const api = window.paperApi
   const [state, setState] = useState<LoadedExperiments | null>(null)
   const [loading, setLoading] = useState(true)
@@ -281,6 +304,14 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const refreshSequence = useRef(0)
+  const sourceRequest = useRef<number | null>(null)
+  useEffect(() => {
+    if (!state || !focusSource || focusSource.target.type !== 'experiment' || sourceRequest.current === focusSource.requestId) return
+    sourceRequest.current = focusSource.requestId
+    const target = focusSource.target
+    if (state.experiments.some(item => item.id === target.experimentId)) { setSelection(target.experimentId); setTreeCollapsed(false) }
+    else setError('概况引用的实验记录已不存在：' + target.experimentId)
+  }, [focusSource, state])
 
   const refresh = useCallback(async () => {
     if (!api || !folderPath) return
@@ -370,7 +401,7 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
     })}</div> : <div className="experiments-tree-empty">还没有实验组。Agent 创建后会自动出现。</div>}<div className="experiments-tree-foot"><Clock3 size={13} />本地文件自动同步</div></aside>
     <main className="experiments-main">
       {loading ? <div className="experiments-main-empty">正在读取实验记录…</div>
-        : selectedExperiment ? <ExperimentContent key={selectedExperiment.id} item={selectedExperiment} state={state!} folderPath={folderPath} />
+        : selectedExperiment ? <ExperimentContent key={selectedExperiment.id} item={selectedExperiment} state={state!} folderPath={folderPath} focusSource={focusSource} />
           : selectedGroup ? <div className="experiment-content">
             <div className="experiment-content-kicker">实验组 / {selectedGroup.key}</div>
             <h2>{selectedGroup.title}</h2>

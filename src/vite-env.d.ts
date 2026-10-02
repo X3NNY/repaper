@@ -6,10 +6,17 @@ import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminal
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../shared/writing'
 import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../shared/submissions'
+import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
 
 declare global {
   interface Window {
     paperApi?: {
+      overviewGet: (folderPath: string, project?: OverviewProject) => Promise<OverviewWorkspace>
+      overviewNoteSave: (folderPath: string, draft: OverviewNoteDraft, id?: string) => Promise<void>
+      overviewNodeEdit: (folderPath: string, id: string, edit: OverviewEdit) => Promise<void>
+      overviewAgentOpen: (folderPath: string, provider: SessionProvider, permissionMode: AgentPermissionMode) => Promise<SessionTerminalInfo>
+      overviewReadImage: (folderPath: string, path: string) => Promise<string>
+      onOverviewChanged: (callback: (folderPath: string) => void) => () => void
       loadWorkspace: () => Promise<WorkspaceData>
       saveWorkspace: (workspace: WorkspaceData) => Promise<void>
       chooseFile: () => Promise<string | null>

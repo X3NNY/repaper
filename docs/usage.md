@@ -18,6 +18,7 @@ npm run dev
 - 论文项目：新建时输入题目并选择本地工作文件夹；简称、阶段、简介和标签可在进入项目后补充。支持搜索和阶段筛选。进入论文后，左侧切换为这篇论文的专属导航，完成工作后可返回论文库。
 - 会话：论文导航中的“概况”排第一，“会话”排第二。会话页按 Codex 和 Claude Code 分组列出所选文件夹的已有会话；点击会话后，在应用内分别启动对应的 CLI 终端。顶部用一个组合按钮新建会话，主按钮使用全局默认 Agent（初始为 Codex），下拉菜单可临时选择另一种；全局“设置”页可修改默认值。切换会话时，已打开的终端继续运行，直到手动关闭或退出应用。Codex 默认读取会话索引；点击“扫描会话”会同时扫描 Codex 本地旧日志和 Claude Code 的全部本地分页会话。
 - 研究路线：每条路线有自己的目标、状态与实现记录。
+- 概况：研究演化按真实发生日期展示关键记录和研究分支；“论点与证据”展示主张的支持、限制、挑战及回应。点击“整理研究脉络”会使用全局默认 Agent 与权限配置自动发送整理指令，后续继续同一个项目整理会话。节点可编辑标题和摘要、放入主线或过程记录，并定位到实验运行／概览版本、投稿事件／审稿人、文稿 Git 对比或当前源文件。摘要、转折和关系需要材料依据；审稿原文与评分不随概况整理改写。
 - 实验：论文工作目录的 `.repaper/experiments/` 保存“实验组 → 实验 → 运行记录”。实验页左侧列出实验目录，右侧先展示设计原因、关键设置、文字／表格／图片结果和对论文的结论；下方运行记录提供命令、指标、Git 快照、关联会话、产物路径与日志。外部 CLI 写入后页面自动刷新。论文库外的全局“设置”页检测 Codex 和 Claude Code 的 SKILL 安装状态及版本，并可分别一键安装或更新。
 - 写作：论文工作目录内使用 `.paper/` 作为手稿目录。首次进入选择 IEEE 单栏、IEEE 双栏或空模板；空模板只创建 `manuscript.tex`。选择后自动初始化该目录的 Git。文件树可收起，文本编辑自动保存；编辑 TeX 时右侧连续滚动显示编译后的 PDF，可查看最近一次编译日志或打开 PDF 所在目录。按住 Ctrl 点击 PDF 页面可跳到对应的 TeX 文件和行（macOS 使用 ⌘）；旧 PDF 若没有 SyncTeX 映射，需要在应用内重新编译。编译按钮默认使用 pdfLaTeX，可从按钮下拉菜单切换 XeLaTeX；普通改动快速编译，参考文献、样式、引用等依赖变化时完整编译。版本历史和记录版本放在同一操作组；选择历史提交后，以该提交为基准对比当前工作区，左侧标出新增、修改、删除文件，右侧只读编辑器用绿色和红色显示文本差异。记录版本时先预览各文件及总增删行数，没有改动时无法提交。
 - 投稿：左侧“投稿”页按首次投递日期倒序展示各次投稿；每次投稿内按时间线记录审稿、编辑决定、rebuttal、修订稿等多个事件。可手动编辑，也可让 Agent 从邮件、OpenReview 页面或系统导出材料整理。关联上一轮投稿后可追溯转投过程。
@@ -32,9 +33,9 @@ npm run dev
 
 ## 初始化已有目录
 
-全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments` 与 `repaper-submissions` 三个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录维护 `AGENTS.md` 的 re:paper 说明；已有文件中的其他内容会保留。空目录到此为止，不会提前生成文稿或虚构实验记录。通过应用启动 Claude Code 时，会提示它读取同一份 `AGENTS.md`；已有 `CLAUDE.md` 的项目也会同步更新其中的 re:paper 区块。
+全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments`、`repaper-submissions` 与 `repaper-overview` 四个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录维护 `AGENTS.md` 的 re:paper 说明；已有文件中的其他内容会保留。空目录到此为止，不会提前生成文稿或虚构实验记录。通过应用启动 Claude Code 时，会提示它读取同一份 `AGENTS.md`；已有 `CLAUDE.md` 的项目也会同步更新其中的 re:paper 区块。
 
-生成的 `AGENTS.md` 按论文、实验、投稿分别说明查看和修改入口：论文通过文件工具或当前会话可用的写作 SKILL 直接读写 `.paper/` 源文件，版本来自该目录的 Git；实验使用 `repaper-experiments` 与 `repaper list`／`show`／`experiment`／`run`；投稿使用 `repaper-submissions` 与 `repaper submission timeline`／`show`／`create`／`update`／`event`。说明只记录接口和数据位置，当前内容由会话按需读取。已有项目可再次运行 `repaper init` 刷新这段说明；通过应用新建或恢复 Agent 终端时也会自动刷新。
+生成的 `AGENTS.md` 按论文、实验、投稿、研究脉络分别说明查看和修改入口：论文通过文件工具或当前会话可用的写作 SKILL 直接读写 `.paper/` 源文件，版本来自该目录的 Git；实验使用 `repaper-experiments` 与 `repaper list`／`show`／`experiment`／`run`；投稿使用 `repaper-submissions` 与 `repaper submission timeline`／`show`／`create`／`update`／`event`；概况使用 `repaper-overview` 与 `repaper overview context`／`show`／`note`／`publish`。说明只记录接口和数据位置，当前内容由会话按需读取。已有项目可再次运行 `repaper init` 刷新这段说明；通过应用新建或恢复 Agent 终端时也会自动刷新。
 
 已有内容时，初始化 SKILL 会判断最新的可编辑 LaTeX 主文件，使用 `repaper writing import <主文件> --paper <目录>` 把所选源目录中的 LaTeX 文件和相关图表资源复制到 `.paper/`，以 `manuscript.tex` 作为写作入口，并初始化该目录的 Git。原文件不会移动或覆盖；已有非空 `.paper/` 不会被自动替换。若只有 PDF、Word 等格式而没有 LaTeX 源文件，SKILL 会说明限制并保留原文件。
 
@@ -85,7 +86,24 @@ repaper submission event <投稿ID> --file event.json --id <事件ID>
 
 JSON 草稿文件需位于论文工作目录中。投稿草稿使用 `venue`、`submittedAt`（`YYYY-MM-DD`）与 `versionLabel` 或 `gitCommit`；旧版写作记录还可用稳定的 `versionId` 关联，并可填写 `track`、`previousSubmissionId`、`notes`。事件草稿至少要有 `kind`（`reviews`、`decision`、`rebuttal`、`revision`、`note`）；编辑决定事件还需 `decision` 分类，并用 `rawDecision` 保留原始文字。`occurredAt` 不确定时可留空。事件级 `summary` 可以是 AI 概括；每条 `reviews` 用 `reviewer`、`rawScore` 和 `rawText` 逐字保存审稿人标签、完整原始评分及意见正文。可选的 `displayMarkdown` 只负责将已核对的 `rawText` 按 Markdown 和 `$...$`／`$$...$$` LaTeX 公式排版，不得改变文字、数值和含义，且必须保留 `rawText` 并关联原始材料。旧 `score`、`summary`、`strengths`、`concerns`、`requests` 可能是 AI 整理内容，不可直接当作原文。`sources` 可保存邮件或网页原文与链接，原始文件路径放在顶层 `sourceFilePaths` 或带 `key` 的 `sourceFiles` 中，CLI 会复制附件。来源的 `key` 可通过审稿条目的 `sourceKeys` 关联；稳定的 `importKey` 可定位同一事件。更新事件时需先读取其最新 `revision` 并作为 `expectedRevision` 提交，冲突后重新整理，避免覆盖手动补充。详见 `repaper-submissions` SKILL。
 
-全局“设置”页按提供方检查三个 SKILL 与 CLI，并比较安装版本与内置内容。一键安装会同时复制三个 SKILL 和 CLI；更新已有 SKILL 时会先备份原 `SKILL.md`。从投稿页启动整理时也会自动准备对应 Agent 的投稿 SKILL。安装一次对所有论文生效；新建或重启 Agent 会话后可加载新安装的 SKILL。源码位于 `skills/repaper-init/`、`skills/repaper-experiments/` 与 `skills/repaper-submissions/`。
+全局“设置”页按提供方检查四个 SKILL 与 CLI，并比较安装版本与内置内容。一键安装会同时复制四个 SKILL 和 CLI；更新已有 SKILL 时会先备份原 `SKILL.md`。从投稿页或概况页启动整理时也会自动准备对应 Agent 的投稿或研究脉络 SKILL。安装一次对所有论文生效；新建或重启 Agent 会话后可加载新安装的 SKILL。源码位于 `skills/repaper-init/`、`skills/repaper-experiments/`、`skills/repaper-submissions/` 与 `skills/repaper-overview/`。
+
+## 研究脉络与思考记录
+
+概况先汇集现有实验、概览修订、运行、投稿与审稿、文稿源文件和内部 Git 版本，以及旧版项目记录。普通运行、文稿提交和源文件默认放在过程记录中。Agent 整理产生研究问题、主张、发现、决定和有出处的关系；人工编辑会独立保存，后续整理不会覆盖。
+
+“记录思考”使用一个粘贴框，支持文本、链接与 PNG／JPEG／WebP 图片。发生日期可以留空；记录时间不会冒充发生时间。可以只保存，也可以保存并让 Agent 整理。以后打开该记录继续补充，仍使用同一个概况整理会话。无法定位原会话时会提示到“会话”继续，以免自动创建重复会话。
+
+`.repaper/overview/state.json` 保存研究内容、关系、思考记录和人工覆盖；`revisions/` 保存之前的版本，`materials/` 保存原始图片。节点、关系及当前论文摘要会保留整理时的来源快照；来源改变或消失时仍可查看当时的摘录。图片附件保持原样。索引不会自动读取完整历史 Agent 会话；可把相关会话片段粘贴为思考记录。
+
+```text
+repaper overview context --json
+repaper overview show --json
+repaper overview note --text "作者的原始决定和原因" --date 2026-10-01
+repaper overview publish --file journey-draft.json
+```
+
+发布草稿需要 `expectedRevision`、已读取来源的 `sourceFingerprints`，以及节点和关系的 `sourceIds`。重复整理按稳定 ID 合并；版本或来源有冲突时重新读取，不直接覆盖。初始化生成的 `AGENTS.md` 已加入这些入口。
 
 Codex 功能需要本机已[安装并登录 Codex CLI](https://developers.openai.com/codex/cli/)。应用会从 `PATH` 查找可执行文件；Windows 上还会查找 Codex 桌面安装目录和 npm 全局安装包。如果自动查找失败，可将 `CODEX_CLI_PATH` 设置为 `codex.exe` 的完整路径。应用通过 CLI 的 app-server 协议只读取 Codex 会话索引，交互使用嵌入的原生 Codex CLI 终端。
 

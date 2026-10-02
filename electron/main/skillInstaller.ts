@@ -5,8 +5,9 @@ import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import type { SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 
-const SKILL_NAMES = ['repaper-experiments', 'repaper-init', 'repaper-submissions'] as const
+const SKILL_NAMES = ['repaper-experiments', 'repaper-init', 'repaper-submissions', 'repaper-overview'] as const
 const submissionInstalls = new Map<SkillProvider, Promise<string>>()
+const overviewInstalls = new Map<SkillProvider, Promise<string>>()
 
 const applicationRoot = resolve(__dirname, '../..')
 function sourceSkillPath(name: string): string {
@@ -108,11 +109,10 @@ export async function installSkill(provider: SkillProvider): Promise<SkillInstal
   return skillStatuses()
 }
 
-async function ensureSubmissionSkillNow(provider: SkillProvider): Promise<string> {
-  const name = 'repaper-submissions'
+async function ensureAgentSkillNow(provider: SkillProvider, name: 'repaper-submissions' | 'repaper-overview'): Promise<string> {
   const source = await readFile(sourceSkillPath(name))
   const availableVersion = versionOf(source.toString('utf8'))
-  if (!availableVersion) throw new Error('内置投稿 SKILL 缺少有效版本号。')
+  if (!availableVersion) throw new Error(`内置 ${name} SKILL 缺少有效版本号。`)
   const directory = destination(provider, name)
   const path = join(directory, 'SKILL.md')
   const current = await readFile(path).catch((error: NodeJS.ErrnoException) => {
@@ -136,10 +136,19 @@ export function ensureSubmissionSkill(provider: SkillProvider): Promise<string> 
   const existing = submissionInstalls.get(provider)
   if (existing) return existing
   let pending: Promise<string>
-  pending = ensureSubmissionSkillNow(provider).finally(() => {
+  pending = ensureAgentSkillNow(provider, 'repaper-submissions').finally(() => {
     if (submissionInstalls.get(provider) === pending) submissionInstalls.delete(provider)
   })
   submissionInstalls.set(provider, pending)
+  return pending
+}
+
+export function ensureOverviewSkill(provider: SkillProvider): Promise<string> {
+  if (provider !== 'codex' && provider !== 'claude') return Promise.reject(new Error('未知的 Agent。'))
+  const existing = overviewInstalls.get(provider)
+  if (existing) return existing
+  const pending = ensureAgentSkillNow(provider, 'repaper-overview').finally(() => { overviewInstalls.delete(provider) })
+  overviewInstalls.set(provider, pending)
   return pending
 }
 

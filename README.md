@@ -175,8 +175,10 @@ repaper/
 ├── electron/preload/            # Preload 桥接 API
 ├── shared/                      # 前后端共享数据类型
 ├── cli/                         # repaper CLI 工具源码
+├── skills/repaper-init/         # Agent 项目初始化 Skill
 ├── skills/repaper-experiments/  # Agent 实验记录 Skill
 ├── skills/repaper-submissions/  # Agent 投稿材料整理 Skill
+├── skills/repaper-overview/     # Agent 研究脉络整理 Skill
 └── tests/                       # 单元测试与界面检查脚本
 
 ```

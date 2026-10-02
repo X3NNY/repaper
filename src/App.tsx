@@ -10,13 +10,15 @@ import type {
   WorkspaceData
 } from '../shared/model'
 import type { AgentPermissionMode, SessionProvider } from '../shared/sessions'
-import type { SubmissionAgentLaunch, SubmissionEvent } from '../shared/submissions'
+import type { SubmissionEvent } from '../shared/submissions'
+import type { OverviewFocus, OverviewTarget } from '../shared/overview'
 import EditorDialog, { type DialogState } from './components/EditorDialog'
 import SessionsPanel from './components/SessionsPanel'
 import WritingPanel from './components/WritingPanel'
 import ExperimentsPanel from './components/ExperimentsPanel'
 import SubmissionsPanel from './components/SubmissionsPanel'
 import SettingsPanel from './components/SettingsPanel'
+import OverviewPanel from './components/OverviewPanel'
 import {
   createId, createSamplePaper, formatDate, loadWorkspace, mostRecentPaper,
   paperStatusLabels, saveWorkspace
@@ -27,7 +29,7 @@ type PaperTab = 'overview' | 'sessions' | 'writing' | 'experiments' | 'submissio
 type SaveState = 'saved' | 'saving' | 'error'
 
 const tabs: { id: PaperTab; label: string; detail: string; icon: LucideIcon }[] = [
-  { id: 'overview', label: '概况', detail: '论文信息与工作入口', icon: LayoutDashboard },
+  { id: 'overview', label: '概况', detail: '研究演化 · 论点与证据', icon: LayoutDashboard },
   { id: 'sessions', label: '会话', detail: 'Codex · Claude Code', icon: TerminalSquare },
   { id: 'writing', label: '写作', detail: '.paper/ · 编译与版本', icon: FileText },
   { id: 'experiments', label: '实验', detail: '实验组与运行记录', icon: FlaskConical },
@@ -400,7 +402,23 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget, defau
   onEdit: () => void; onDelete: () => void; toolbarTarget: HTMLDivElement | null; defaultAgent: SessionProvider;
   permissionMode: AgentPermissionMode
 }) {
-  const [agentLaunch, setAgentLaunch] = useState<SubmissionAgentLaunch | null>(null)
+  const [agentLaunch, setAgentLaunch] = useState<{ terminalId: string } | null>(null)
+  const [sourceFocus, setSourceFocus] = useState<OverviewFocus | null>(null)
+  const focusRequest = useRef(0)
+  useEffect(() => { setAgentLaunch(null); setSourceFocus(null) }, [paper.id])
+
+  async function organizeOverview(): Promise<void> {
+    if (!paper.folderPath || !window.paperApi) throw new Error('请先关联论文目录，并在桌面应用中使用 Agent。')
+    const launch = await window.paperApi.overviewAgentOpen(paper.folderPath, defaultAgent, permissionMode)
+    setAgentLaunch({ terminalId: launch.id })
+    onTab('sessions')
+  }
+  function openOverviewSource(target: OverviewTarget): void {
+    setSourceFocus({ target, requestId: ++focusRequest.current })
+    if (target.type === 'experiment') onTab('experiments')
+    if (target.type === 'submission') onTab('submissions')
+    if (target.type === 'writing') onTab('writing')
+  }
 
   async function organizeSubmission(event: SubmissionEvent): Promise<void> {
     if (!paper.folderPath || !window.paperApi) throw new Error('请先关联论文工作目录并在桌面应用中使用 Agent。')
@@ -418,35 +436,9 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, toolbarTarget, defau
   return <>
     {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
     {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={permissionMode} focusTerminalId={agentLaunch?.terminalId ?? null} /> : null}
-    {tab === 'writing' ? <WritingPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
-    {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} /> : null}
-    {tab === 'submissions' ? <SubmissionsPanel paper={paper} onChooseFolder={onEdit} onOpenSessions={() => onTab('sessions')} onOrganize={organizeSubmission} toolbarTarget={toolbarTarget} /> : null}
-    {tab === 'overview' ? <PaperOverview paper={paper} onTab={onTab} /> : null}
+    {tab === 'writing' ? <WritingPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
+    {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
+    {tab === 'submissions' ? <SubmissionsPanel paper={paper} onChooseFolder={onEdit} onOpenSessions={() => onTab('sessions')} onOrganize={organizeSubmission} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
+    {tab === 'overview' ? <OverviewPanel paper={paper} onTab={onTab} toolbarTarget={toolbarTarget} onChooseFolder={onEdit} onOrganize={organizeOverview} onOpenSource={openOverviewSource} /> : null}
   </>
-}
-
-function PaperOverview({ paper, onTab }: { paper: Paper; onTab: (tab: PaperTab) => void }) {
-  return <div className="overview-grid">
-    <div className="overview-main">
-      <section className="surface-panel">
-        <SectionTitle eyebrow="AGENT SESSIONS" title="会话" detail="在当前论文的工作目录里继续使用 Codex 或 Claude Code。" action={<button className="link-button" onClick={() => onTab('sessions')}>打开会话 <ArrowRight size={16} /></button>} />
-        <div className="overview-writing-path"><TerminalSquare size={20} /><span><strong>{paper.folderPath || '尚未关联工作目录'}</strong><small>按工作目录查找和启动会话</small></span></div>
-      </section>
-      <section className="surface-panel overview-writing">
-        <SectionTitle eyebrow="MANUSCRIPT" title="写作" detail="文稿保存在论文目录的 .paper/ 中，修改会自动保存。" action={<button className="link-button" onClick={() => onTab('writing')}>进入写作 <ArrowRight size={16} /></button>} />
-        <div className="overview-writing-path"><FileText size={20} /><span><strong>{paper.folderPath ? '.paper/manuscript.tex' : '尚未关联工作目录'}</strong><small>{paper.folderPath || '先为这篇论文选择本地文件夹'}</small></span></div>
-        {paper.versions.length ? <details className="legacy-writing-records"><summary>旧版写作记录 · {paper.versions.length}</summary><div>{[...paper.versions].reverse().map((version) => <article key={version.id}><strong>{version.label}</strong><small>{formatDate(version.createdAt)}</small>{version.notes ? <p>{version.notes}</p> : null}{version.filePath ? <code title={version.filePath}>{version.filePath}</code> : null}</article>)}</div></details> : null}
-      </section>
-    </div>
-    <aside className="overview-aside">
-      <section className="surface-panel">
-        <SectionTitle eyebrow="EXPERIMENTS" title="实验" detail="按实验组整理问题和运行记录。" action={<button className="link-button" onClick={() => onTab('experiments')}>查看实验 <ArrowRight size={16} /></button>} />
-        <div className="overview-writing-path"><FlaskConical size={20} /><span><strong>{paper.folderPath ? '.repaper/experiments/' : '尚未关联工作目录'}</strong><small>Agent 运行命令后自动更新实验记录</small></span></div>
-      </section>
-      <section className="surface-panel">
-        <SectionTitle eyebrow="SUBMISSIONS" title="投稿" detail="追踪投稿、审稿决定与修订版本。" action={<button className="link-button" onClick={() => onTab('submissions')}>查看投稿 <ArrowRight size={16} /></button>} />
-        <div className="overview-writing-path"><Send size={20} /><span><strong>{paper.folderPath ? '.repaper/submissions/' : '尚未关联工作目录'}</strong><small>按时间线查看审稿与编辑结论</small></span></div>
-      </section>
-    </aside>
-  </div>
 }

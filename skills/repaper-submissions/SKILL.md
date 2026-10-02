@@ -2,7 +2,7 @@
 name: repaper-submissions
 description: Read, compare, and maintain a paper's submission route, review rounds, editorial decisions, rebuttals, and revisions in re:paper. Use for questions about submission history or venue strategy, and when a user provides correspondence, OpenReview content, portal exports, or other review material to organize.
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # re:paper submissions

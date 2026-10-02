@@ -84,7 +84,7 @@ export default function SettingsPanel({ toolbarTarget, defaultAgent, onDefaultAg
           <button className={`button ${disabled ? 'button-light' : 'button-primary'}`} disabled={disabled} onClick={() => void install(id)}>{installing === id ? <LoaderCircle size={15} className="spin" /> : item?.state === 'current' ? <Check size={15} /> : null}{installing === id ? '安装中…' : action}</button>
         </div>
       })}</div>
-      <div className="global-settings-note">安装或更新会同时提供 repaper-init、repaper-experiments 与 repaper-submissions，适用于所有论文。新建或重启 Agent 会话后会加载新的 SKILL。</div>
+      <div className="global-settings-note">安装或更新会同时提供 repaper-init、repaper-experiments、repaper-submissions 与 repaper-overview，适用于所有论文。新建或重启 Agent 会话后会加载新的 SKILL。</div>
     </section>
     </div>
   </>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -19,6 +19,7 @@ import type {
 } from '../../shared/submissions'
 import { today } from '../lib/workspace'
 import SelectField from './SelectField'
+import type { OverviewFocus } from '../../shared/overview'
 
 interface Props {
   paper: Paper
@@ -26,6 +27,7 @@ interface Props {
   onChooseFolder: () => void
   onOpenSessions: () => void
   onOrganize: (event: SubmissionEvent) => Promise<void>
+  focusSource?: OverviewFocus | null
 }
 
 type Editor = { type: 'attempt'; record?: SubmissionAttempt } |
@@ -411,7 +413,7 @@ function ReviewCard({ review, index, total, eventSources, folderPath, onOpenSour
   const imageSources = sources.filter((source) => source.path && /\.(?:png|jpe?g|webp)$/i.test(source.path))
   const hasRawText = Boolean(review.rawText?.trim())
   const hasDisplayMarkdown = Boolean(review.displayMarkdown?.trim())
-  return <details className="submission-review" open={expanded} onToggle={(event) => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open) }}>
+  return <details className="submission-review" data-review-id={review.id} open={expanded} onToggle={(event) => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open) }}>
     <summary><span>{review.reviewer || `Reviewer ${index + 1}`}</span>{review.rawScore?.trim() ? <small>{review.rawScore}</small> : null}</summary>
     <div>
       {hasDisplayMarkdown ? <ReviewMarkdown text={review.displayMarkdown!} onOpenUrl={onOpenUrl} />
@@ -452,7 +454,7 @@ function EventCard({ event, folderPath, onEdit, onDelete, onOrganize, onError }:
       await window.paperApi.submissionsOpenUrl(url)
     } catch (reason) { onError(errorMessage(reason)) }
   }
-  return <article className={`submission-event-card ${event.kind === 'decision' ? 'is-decision' : ''}`}>
+  return <article data-event-id={event.id} className={`submission-event-card ${event.kind === 'decision' ? 'is-decision' : ''}`}>
     <div className="submission-event-top"><span className="submission-event-type">{eventLabels[event.kind]}</span><time>{event.occurredAt ? `发生于 ${day(event.occurredAt)}` : `记录于 ${day(event.createdAt)} · 发生时间待整理`}</time><div className="submission-event-actions"><button type="button" onClick={onEdit} title="编辑进展" aria-label={`编辑 ${eventTitle(event)}`}><Pencil size={14} /></button><button type="button" onClick={onDelete} title="删除进展" aria-label={`删除 ${eventTitle(event)}`}><Trash2 size={14} /></button></div></div>
     <h4>{eventTitle(event)}</h4>
     {event.summary ? <p className="submission-event-summary">{event.summary}</p> : null}
@@ -470,10 +472,10 @@ function EventCard({ event, folderPath, onEdit, onDelete, onOrganize, onError }:
 
 function LegacyCard({ item, paper, busy, onContinue }: { item: LegacySubmission; paper: Paper; busy: boolean; onContinue: () => void }) {
   const version = paper.versions.find((candidate) => candidate.id === item.versionId)
-  return <article className="submission-attempt legacy"><div className="submission-attempt-head"><div className="submission-attempt-main"><span className="submission-attempt-date"><CalendarDays size={14} />{day(item.submittedAt)}</span><h3>{item.venue}</h3><div className="submission-attempt-facts"><span className="submission-status neutral">{legacyLabels[item.status]}</span><span className="submission-legacy-mark">旧版记录</span><span>版本：{version?.label || '未知'}</span></div></div><div className="submission-attempt-actions"><button type="button" className="button button-light" disabled={busy} onClick={onContinue}>{busy ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}继续记录</button></div></div>{item.notes ? <p className="submission-legacy-notes">{item.notes}</p> : null}</article>
+  return <article className="submission-attempt legacy" data-submission-id={item.id}><div className="submission-attempt-head"><div className="submission-attempt-main"><span className="submission-attempt-date"><CalendarDays size={14} />{day(item.submittedAt)}</span><h3>{item.venue}</h3><div className="submission-attempt-facts"><span className="submission-status neutral">{legacyLabels[item.status]}</span><span className="submission-legacy-mark">旧版记录</span><span>版本：{version?.label || '未知'}</span></div></div><div className="submission-attempt-actions"><button type="button" className="button button-light" disabled={busy} onClick={onContinue}>{busy ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}继续记录</button></div></div>{item.notes ? <p className="submission-legacy-notes">{item.notes}</p> : null}</article>
 }
 
-export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder, onOpenSessions, onOrganize }: Props) {
+export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder, onOpenSessions, onOrganize, focusSource }: Props) {
   const api = window.paperApi
   const folderPath = paper.folderPath || ''
   const [workspace, setWorkspace] = useState<SubmissionWorkspace | null>(null)
@@ -483,6 +485,20 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
   const [editor, setEditor] = useState<Editor | null>(null)
   const [busyId, setBusyId] = useState('')
   const [showAgentGuide, setShowAgentGuide] = useState(false)
+  const sourceRequest = useRef<number | null>(null)
+  useEffect(() => {
+    if (!workspace || !focusSource || focusSource.target.type !== 'submission' || sourceRequest.current === focusSource.requestId) return
+    sourceRequest.current = focusSource.requestId
+    const target = focusSource.target
+    const submissionId = workspace.attempts.find(item => item.id === target.submissionId || item.legacyId === target.submissionId)?.id ?? target.submissionId
+    const attempt = [...document.querySelectorAll<HTMLElement>('[data-submission-id]')].find(item => item.dataset.submissionId === submissionId)
+    const event = target.eventId ? [...(attempt?.querySelectorAll<HTMLElement>('[data-event-id]') ?? [])].find(item => item.dataset.eventId === target.eventId) : undefined
+    const review = target.reviewId ? [...(event?.querySelectorAll<HTMLDetailsElement>('[data-review-id]') ?? [])].find(item => item.dataset.reviewId === target.reviewId) : undefined
+    const destination = target.reviewId ? review : target.eventId ? event : attempt
+    if (!destination) { setError('概况引用的投稿或审稿记录已不存在。'); return }
+    if (review) review.open = true
+    destination.scrollIntoView({ block: 'center' })
+  }, [focusSource, workspace])
 
   const refresh = useCallback(async () => {
     if (!folderPath) { setLoading(false); return }
@@ -580,7 +596,7 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
         const state = currentState(events, attempt.legacyStatus)
         const previous = attempts.find((item) => item.id === attempt.previousSubmissionId)
         const linkedVersion = paper.versions.find((item) => item.id === attempt.versionId)
-        return <article className="submission-attempt" key={attempt.id}>
+        return <article className="submission-attempt" data-submission-id={attempt.id} key={attempt.id}>
           <div className="submission-attempt-head">
             <div className="submission-attempt-main">
               <span className="submission-attempt-date"><CalendarDays size={14} />{day(attempt.submittedAt)}</span>

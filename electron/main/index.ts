@@ -16,6 +16,9 @@ import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLo
 import { adoptLegacySubmission, deleteSubmission, deleteSubmissionEvent, linkSubmissionAgent, loadSubmissions, markSubmissionAgentSent, saveSubmission, saveSubmissionEvent, submissionAgentDeliveryIds, submissionSourcePath } from './submissions'
 import { ensureCliLauncher, ensureSubmissionSkill, installSkill, skillStatuses } from './skillInstaller'
 import type { SkillProvider } from '../../shared/experiments'
+import type { OverviewEdit, OverviewNoteDraft, OverviewProject } from '../../shared/overview'
+import { editOverviewNode, loadOverview, overviewDirectory, overviewMaterial, saveOverviewNote } from './overview'
+import { OverviewAgentManager } from './overviewAgent'
 
 let mainWindow: BrowserWindow | null = null
 let saveQueue: Promise<void> = Promise.resolve()
@@ -24,12 +27,34 @@ const claude = new ClaudeSessions()
 const terminals = new SessionTerminalManager(codex, claude, (event) =>
   mainWindow?.webContents.send('session:terminal:event', event))
 const writing = new WritingWorkspaceManager()
+const overviewAgent = new OverviewAgentManager(terminals, codex, claude)
+const overviewWatchers = new Map<string, Map<string, FSWatcher>>()
+const overviewTimers = new Map<string, NodeJS.Timeout>()
 const experimentWatchers = new Map<string, FSWatcher[]>()
 const experimentTimers = new Map<string, NodeJS.Timeout>()
 const submissionWatchers = new Map<string, FSWatcher[]>()
 const submissionTimers = new Map<string, NodeJS.Timeout>()
 const submissionLaunches = new Map<string, Promise<SubmissionAgentLaunch>>()
 const maxSubmissionImageBytes = 25 * 1024 * 1024
+
+function watchOverview(folder: string): void {
+  const watchers = overviewWatchers.get(folder) ?? new Map<string, FSWatcher>()
+  overviewWatchers.set(folder, watchers)
+  for (const directory of [overviewDirectory(folder), join(folder, '.paper')]) {
+    if (watchers.has(directory)) continue
+    try {
+      const watcher = watch(directory, { recursive: true }, (_event, filename) => {
+        const path = String(filename ?? '').replaceAll('\\', '/')
+        if (path.includes('.tmp') || path.startsWith('.build/') || path.startsWith('.git/objects/') || path.includes('write.lock')) return
+        const previous = overviewTimers.get(folder)
+        if (previous) clearTimeout(previous)
+        overviewTimers.set(folder, setTimeout(() => mainWindow?.webContents.send('overview:changed', folder), 250))
+      })
+      watcher.on('error', () => { watcher.close(); watchers.delete(directory) })
+      watchers.set(directory, watcher)
+    } catch { /* Writing may not have been initialized yet. */ }
+  }
+}
 
 function watchExperiments(folder: string): void {
   if (experimentWatchers.has(folder)) return
@@ -371,6 +396,23 @@ app.whenReady().then(async () => {
     watchExperiments(folder)
     return state
   })
+  ipcMain.handle('overview:get', async (_event, folderPath: string, project?: OverviewProject) => {
+    const folder = await requireFolder(folderPath)
+    const state = await loadOverview(folder, project)
+    watchOverview(folder); watchExperiments(folder); watchSubmissions(folder)
+    return state
+  })
+  ipcMain.handle('overview:note:save', async (_event, folderPath: string, draft: OverviewNoteDraft, id?: string) =>
+    saveOverviewNote(await requireFolder(folderPath), draft, id))
+  ipcMain.handle('overview:node:edit', async (_event, folderPath: string, id: string, edit: OverviewEdit) =>
+    editOverviewNode(await requireFolder(folderPath), id, edit))
+  ipcMain.handle('overview:agent:open', async (_event, folderPath: string, provider: SessionProvider, permissionMode: AgentPermissionMode) =>
+    overviewAgent.open(await requireFolder(folderPath), provider, permissionMode))
+  ipcMain.handle('overview:image:read', async (_event, folderPath: string, path: string) => {
+    const file = await overviewMaterial(await requireFolder(folderPath), path)
+    const mime = file.endsWith('.png') ? 'image/png' : file.endsWith('.jpg') ? 'image/jpeg' : 'image/webp'
+    return `data:${mime};base64,${(await readFile(file)).toString('base64')}`
+  })
   ipcMain.handle('submissions:get', async (_event, folderPath: string) => {
     const folder = await requireFolder(folderPath)
     const state = await loadSubmissions(folder)
@@ -439,6 +481,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  for (const watchers of overviewWatchers.values()) for (const watcher of watchers.values()) watcher.close()
+  for (const timer of overviewTimers.values()) clearTimeout(timer)
   for (const watchers of experimentWatchers.values()) watchers.forEach((item) => item.close())
   for (const timer of experimentTimers.values()) clearTimeout(timer)
   for (const watchers of submissionWatchers.values()) watchers.forEach((item) => item.close())
