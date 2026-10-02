@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile, mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import { watch, type FSWatcher } from 'node:fs'
@@ -340,6 +340,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('file:open', async (_event, path: string) => {
     if (!path || typeof path !== 'string') return '文件路径无效。'
     return shell.openPath(path)
+  })
+  ipcMain.handle('clipboard:write-text', (_event, text: string) => {
+    if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 4 * 1024 * 1024) throw new Error('复制内容需要是 4 MB 以内的文本。')
+    clipboard.writeText(text)
   })
   ipcMain.handle('codex:list', async (_event, folderPath: string, cursor?: string, scanAll?: boolean) =>
     codex.listThreads(await requireFolder(folderPath), cursor, scanAll === true))

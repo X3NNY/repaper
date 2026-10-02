@@ -435,6 +435,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .codex-terminal-host { width: 100%; height: 100%; overflow: hidden; }
 .codex-terminal-host .xterm { height: 100%; }
 .codex-terminal-host .xterm .xterm-viewport { background-color: var(--terminal-background); }
+.codex-terminal-copy { position: absolute; z-index: 5; top: 12px; right: 22px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #dce8d8; border-radius: 7px; background: #f5f9f2; color: #50765a; box-shadow: 0 3px 12px #25463112; font-size: 11px; }
+.codex-terminal-copy:hover { border-color: #a8c5a5; background: #eaf3e5; color: #2c6542; }
+.codex-terminal-copy:focus-visible { outline: 2px solid #689c73; outline-offset: 2px; }
 .codex-terminal-error { position: absolute; right: 18px; bottom: 18px; max-width: min(440px, calc(100% - 36px)); padding: 9px 12px; border: 1px solid #dcafa6; border-radius: 6px; background: #fff1ec; color: #9b473b; font-size: 11px; }
 .codex-no-selection { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 25px; color: #83a087; text-align: center; }
 .codex-no-selection h3 { margin: 13px 0 4px; color: #45644c; font: 400 18px 'Libre Baskerville', 'Songti SC', Georgia, serif; }

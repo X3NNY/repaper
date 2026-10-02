@@ -29,6 +29,7 @@ const paperApi = {
   chooseFile: (): Promise<string | null> => ipcRenderer.invoke('file:choose'),
   chooseFolder: (): Promise<string | null> => ipcRenderer.invoke('folder:choose'),
   openFile: (path: string): Promise<string> => ipcRenderer.invoke('file:open', path),
+  clipboardWriteText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write-text', text),
   codexListThreads: (folderPath: string, cursor?: string, scanAll?: boolean): Promise<CodexThreadPage> => ipcRenderer.invoke('codex:list', folderPath, cursor, scanAll),
   claudeListSessions: (folderPath: string, cursor?: string): Promise<SessionPage> => ipcRenderer.invoke('claude:list', folderPath, cursor),
   sessionTerminalList: (folderPath: string): Promise<SessionTerminalInfo[]> => ipcRenderer.invoke('session:terminal:list', folderPath),

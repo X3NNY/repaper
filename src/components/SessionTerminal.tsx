@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
+import { Check, Copy } from 'lucide-react'
 import type { SessionProvider, SessionTerminalEvent } from '../../shared/sessions'
 import { createLightAnsiTransformer } from '../lib/terminalColors'
 import '@xterm/xterm/css/xterm.css'
@@ -13,6 +14,9 @@ interface Props {
 
 export default function SessionTerminal({ terminalId, provider, onStatus }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const copyRef = useRef<(() => void) | null>(null)
+  const [hasSelection, setHasSelection] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -23,6 +27,7 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
     let disposed = false
     let ready = false
     let sequence = 0
+    let copyTimer: ReturnType<typeof setTimeout> | undefined
     const pending: SessionTerminalEvent[] = []
     const transformColors = createLightAnsiTransformer()
     const styles = getComputedStyle(host)
@@ -61,6 +66,47 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
     const fit = new FitAddon()
     terminal.loadAddon(fit)
     terminal.open(host)
+
+    async function copySelection() {
+      const text = terminal.getSelection()
+      if (!text) return
+      try {
+        if (typeof api!.clipboardWriteText === 'function') await api!.clipboardWriteText(text)
+        else await navigator.clipboard.writeText(text)
+        if (disposed) return
+        setCopied(true)
+        if (copyTimer) clearTimeout(copyTimer)
+        copyTimer = setTimeout(() => { if (!disposed) setCopied(false) }, 1800)
+      } catch (reason) {
+        if (!disposed) setError(reason instanceof Error ? reason.message : '无法复制终端选中的文字。')
+      }
+    }
+    copyRef.current = () => { void copySelection() }
+    const selection = terminal.onSelectionChange(() => {
+      setHasSelection(terminal.hasSelection())
+      setCopied(false)
+    })
+    terminal.attachCustomKeyEventHandler(event => {
+      const copyKey = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'c'
+      if (!copyKey || (!terminal.hasSelection() && !event.shiftKey)) return true
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.type === 'keydown' && !event.repeat) void copySelection()
+      return false
+    })
+    const preserveSelection = (event: MouseEvent) => {
+      if (event.button !== 2 || !terminal.hasSelection()) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const copyOnRightClick = (event: MouseEvent) => {
+      if (!terminal.hasSelection()) return
+      event.preventDefault()
+      event.stopPropagation()
+      void copySelection()
+    }
+    host.addEventListener('mousedown', preserveSelection, true)
+    host.addEventListener('contextmenu', copyOnRightClick, true)
 
     function apply(event: SessionTerminalEvent) {
       if (event.sequence <= sequence) return
@@ -117,12 +163,18 @@ export default function SessionTerminal({ terminalId, provider, onStatus }: Prop
       unsubscribe()
       input.dispose()
       binaryInput.dispose()
+      selection.dispose()
+      copyRef.current = null
+      if (copyTimer) clearTimeout(copyTimer)
+      host.removeEventListener('mousedown', preserveSelection, true)
+      host.removeEventListener('contextmenu', copyOnRightClick, true)
       terminal.dispose()
     }
   }, [terminalId, provider, onStatus])
 
   return <div className="codex-terminal-wrap">
     <div className="codex-terminal-host" ref={hostRef} />
+    {hasSelection ? <button type="button" className="codex-terminal-copy" title="复制所选文字（Ctrl+C / Ctrl+Shift+C，macOS 使用 ⌘C；右键也可复制）" onMouseDown={event => event.preventDefault()} onClick={() => copyRef.current?.()}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? '已复制' : '复制所选'}</button> : null}
     {error ? <div className="codex-terminal-error">{error}</div> : null}
   </div>
 }

@@ -22,6 +22,7 @@ declare global {
       chooseFile: () => Promise<string | null>
       chooseFolder: () => Promise<string | null>
       openFile: (path: string) => Promise<string>
+      clipboardWriteText: (text: string) => Promise<void>
       codexListThreads: (folderPath: string, cursor?: string, scanAll?: boolean) => Promise<CodexThreadPage>
       claudeListSessions: (folderPath: string, cursor?: string) => Promise<SessionPage>
       sessionTerminalList: (folderPath: string) => Promise<SessionTerminalInfo[]>
