@@ -85,6 +85,7 @@ export async function overviewContext(root: string, project?: OverviewProject): 
     add(`experiment:${item.id}`, 'experiment', item.title, item.createdAt, item.updatedAt, item,
       [overview?.designReason || item.designReason || item.question, overview?.conclusion || item.conclusion, `${runs.length} 次运行`, JSON.stringify(overview?.results ?? item.results ?? [])].filter(Boolean).join('\n'),
       { type: 'experiment', experimentId: item.id, revisionId: overview?.revisionId })
+    if (item.importance) sources[sources.length - 1].experimentImportance = { ...item.importance }
     for (const revision of await listOverviewRevisions(root, item.id)) {
       add(`experiment-revision:${item.id}:${revision.revisionId}`, 'finding', `${item.title} · 概览修订`, revision.updatedAt, revision.updatedAt, revision,
         [revision.designReason, JSON.stringify(revision.results), revision.conclusion].join('\n'), { type: 'experiment', experimentId: item.id, revisionId: revision.revisionId }, true)
@@ -150,7 +151,7 @@ export async function loadOverview(root: string, project?: OverviewProject): Pro
   const state = await document(root)
   const facts: OverviewNode[] = context.sources.map(source => ({ id: source.id, kind: source.kind, title: source.title,
     summary: source.target.type === 'note' ? state.notes.find(note => source.target.type === 'note' && note.id === source.target.noteId)?.text.slice(0, 300) ?? '' : source.kind === 'manuscript' ? source.id === 'manuscript:current' ? '' : source.excerpt.split('\n')[0] : source.excerpt.slice(0, 300), occurredAt: source.occurredAt,
-    status: source.kind === 'route' && source.excerpt.endsWith('closed') ? 'stopped' : 'current', importance: state.recordImportance[source.id] ?? (source.detail ? 'detail' : 'main'),
+    status: source.kind === 'route' && source.excerpt.endsWith('closed') ? 'stopped' : 'current', importance: source.experimentImportance?.value === 'important' ? 'main' : state.recordImportance[source.id] ?? (source.detail ? 'detail' : 'main'),
     before: '', after: '', reason: '', parentId: '', sources: [source], origin: 'record' }))
   const nodes = [...facts, ...state.nodes].map(node => ({ ...node, ...state.edits[node.id] }))
   return { ...state, nodes, rootPath: overviewDirectory(root), project: context.project, sources: context.sources, warnings: context.warnings,

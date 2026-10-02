@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   Activity, ArrowRight, Check, ChevronDown, ChevronRight, CircleAlert, Clipboard,
   Clock3, FileCode2, FolderOpen, GitBranch, History, ListTree, LoaderCircle,
-  RefreshCw, TerminalSquare, X
+  RefreshCw, Star, TerminalSquare, X
 } from 'lucide-react'
 import type { ExperimentItem, ExperimentOverview, ExperimentOverviewSection, ExperimentResultBlock, ExperimentRun, ExperimentWorkspace } from '../../shared/experiments'
 import { experimentActivities, experimentReadingKey, loadExperimentReadRecords, markExperimentRead, type ExperimentActivity, type ExperimentReadRecords } from '../lib/experimentReading'
@@ -29,6 +29,12 @@ const exampleCommands = [
   'repaper experiment ensure benchmark/data-a --title "A 数据集" --subtitle "检验 A 上是否优于基线" --design "比较相同训练设置下两种方法的泛化表现" --setting "数据集=A" --setting "主指标=accuracy"',
   'repaper run benchmark/data-a --label "A 数据集 · seed 1" -- python eval.py --dataset A'
 ].join('\n')
+
+function importanceTitle(item: ExperimentItem): string {
+  const mark = item.importance
+  const action = mark?.value === 'important' ? '取消重要标记' : '标为重要'
+  return action + (mark ? '\n' + (mark.source === 'manual' ? '人工设置' : 'Agent 设置') + (mark.reason ? '：' + mark.reason : '') : '')
+}
 
 function time(value: string): string {
   if (!value) return '—'
@@ -181,7 +187,7 @@ function OverviewRevisionHistory({ revisions, focusRevisionId }: { revisions: Ex
   </details>)}</div>
 }
 
-function ExperimentContent({ item, state, folderPath, focusSource }: { item: ExperimentItem; state: ExperimentWorkspace; folderPath: string; focusSource?: OverviewFocus | null }) {
+function ExperimentContent({ item, state, folderPath, focusSource, importanceBusy, onToggleImportance }: { item: ExperimentItem; state: ExperimentWorkspace; folderPath: string; focusSource?: OverviewFocus | null; importanceBusy: boolean; onToggleImportance: () => void }) {
   const api = window.paperApi
   const runs = state.runs.filter((run) => run.experimentId === item.id)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -258,12 +264,14 @@ function ExperimentContent({ item, state, folderPath, focusSource }: { item: Exp
   return <div className="experiment-content">
     <div className="experiment-content-kicker">实验 / {item.id}</div>
     <div className="experiment-title-row"><h2>{item.title}</h2><div className="experiment-title-actions">
+      <button type="button" className={`experiment-importance-toggle ${item.importance?.value === 'important' ? 'is-important' : ''}`} onClick={onToggleImportance} disabled={importanceBusy} aria-pressed={item.importance?.value === 'important'} title={importanceTitle(item)}>{importanceBusy ? <LoaderCircle size={14} className="spin" /> : <Star size={14} fill={item.importance?.value === 'important' ? 'currentColor' : 'none'} />}{item.importance?.value === 'important' ? '重要' : '标为重要'}</button>
       {runningCount ? <span className="experiment-progress running">{runningCount} 个运行中</span> : null}
       {finishedCount ? <span className="experiment-progress">{finishedCount} 次已结束</span> : null}
       {overview ? <button className="experiment-history-button" onClick={() => setShowRevisions((open) => !open)} aria-expanded={showRevisions}><History size={14} />更新记录</button> : null}
       {!overview && (legacyFields.length || runs.length) ? <button className="experiment-history-button" onClick={() => void copyOrganizePrompt()}><Clipboard size={14} />{copiedOrganize ? '已复制' : '复制整理指令'}</button> : null}
     </div></div>
     {subtitle ? <p className="experiment-question">{subtitle}</p> : null}
+    {item.importance?.reason ? <details className="experiment-importance-reason"><summary>{item.importance.source === 'agent' ? 'Agent 的标记理由' : '重要度说明'}</summary><p>{item.importance.reason}</p></details> : null}
     {sourceError ? <div className="experiment-error"><CircleAlert size={16} />{sourceError}</div> : null}
     {showRevisions ? <section className="experiment-revisions"><h3>概览更新记录</h3>{revisionError ? <p>{revisionError}</p> : <OverviewRevisionHistory revisions={revisions} focusRevisionId={focusRevisionId} />}</section> : null}
     {hasOverview && overview ? <div className="experiment-overview-grid">
@@ -301,6 +309,9 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
   const [readingFocused, setReadingFocused] = useState(() => document.visibilityState === 'visible' && document.hasFocus())
   const [selection, setSelection] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [importantOnly, setImportantOnly] = useState(false)
+  const [importanceBusy, setImportanceBusy] = useState('')
+  const [importanceError, setImportanceError] = useState('')
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const refreshSequence = useRef(0)
@@ -309,7 +320,12 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
     if (!state || !focusSource || focusSource.target.type !== 'experiment' || sourceRequest.current === focusSource.requestId) return
     sourceRequest.current = focusSource.requestId
     const target = focusSource.target
-    if (state.experiments.some(item => item.id === target.experimentId)) { setSelection(target.experimentId); setTreeCollapsed(false) }
+    const item = state.experiments.find(item => item.id === target.experimentId)
+    if (item) {
+      setSelection(item.id); setTreeCollapsed(false)
+      if (item.importance?.value !== 'important') setImportantOnly(false)
+      setCollapsedGroups(previous => { const next = new Set(previous); next.delete(item.groupKey); return next })
+    }
     else setError('概况引用的实验记录已不存在：' + target.experimentId)
   }, [focusSource, state])
 
@@ -330,6 +346,7 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
   useEffect(() => {
     setState(null); setLoading(true); setSelection(null)
     setReadRecords({}); setReadError(''); setError('')
+    setImportantOnly(false); setImportanceBusy(''); setImportanceError('')
     void refresh()
     const unsubscribe = api && folderPath ? api.onExperimentsChanged((changedFolder) => {
       if (changedFolder.toLowerCase() === folderPath.toLowerCase()) void refresh()
@@ -359,9 +376,12 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
     return () => window.removeEventListener('storage', syncReading)
   }, [readingRoot])
 
-  const active = selection && (state?.groups.some((group) => group.key === selection) || state?.experiments.some((item) => item.id === selection)) ? selection : state?.groups[0]?.key ?? null
-  const selectedGroup = state?.groups.find((group) => group.key === active)
-  const selectedExperiment = state?.experiments.find((item) => item.id === active)
+  const visibleExperiments = state?.experiments.filter(item => !importantOnly || item.importance?.value === 'important') ?? []
+  const importantCount = state?.experiments.filter(item => item.importance?.value === 'important').length ?? 0
+  const visibleGroups = state?.groups.filter(group => !importantOnly || visibleExperiments.some(item => item.groupKey === group.key)) ?? []
+  const active = selection && (visibleGroups.some(group => group.key === selection) || visibleExperiments.some(item => item.id === selection)) ? selection : visibleGroups[0]?.key ?? null
+  const selectedGroup = visibleGroups.find(group => group.key === active)
+  const selectedExperiment = visibleExperiments.find(item => item.id === active)
   const selectedExperimentId = selectedExperiment?.id
   const selectedRevision = selectedExperimentId ? state?.activities[selectedExperimentId]?.revision : undefined
 
@@ -373,6 +393,24 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
     } catch { setReadError('无法保存实验阅读状态，请检查本地存储空间。') }
   }, [error, loading, readRecords, readingFocused, readingRoot, selectedExperimentId, selectedRevision])
 
+  async function toggleImportance(item: ExperimentItem) {
+    if (!folderPath || importanceBusy) return
+    if (typeof api?.experimentsImportanceSet !== 'function') { setImportanceError('当前应用尚未加载重要度接口，请完成正在运行的会话后重启 re:paper。'); return }
+    const value = item.importance?.value === 'important' ? 'normal' : 'important'
+    setImportanceBusy(item.id); setImportanceError('')
+    try {
+      await api.experimentsImportanceSet(folderPath, item.id, value, item.importance?.revision ?? 0)
+      if (importantOnly && value === 'normal') setSelection(state?.experiments.find(record => record.id !== item.id && record.importance?.value === 'important')?.id ?? null)
+      await refresh()
+    } catch (reason) { setImportanceError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { setImportanceBusy('') }
+  }
+  function toggleImportantFilter() {
+    const next = !importantOnly
+    setImportantOnly(next)
+    if (next && selectedExperiment?.importance?.value !== 'important') setSelection(state?.experiments.find(item => item.importance?.value === 'important')?.id ?? null)
+  }
+
   const copyExample = async () => {
     try { await navigator.clipboard.writeText(exampleCommands); setCopied(true); setTimeout(() => setCopied(false), 1800) }
     catch { setCopied(false) }
@@ -380,28 +418,30 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
 
   if (!folderPath) return <div className="codex-connect-empty"><div className="empty-icon"><FolderOpen size={28} /></div><h2>这篇论文尚未关联文件夹</h2><p>选择工作目录后，实验记录会保存在其中的 .repaper/experiments/。</p><button className="button button-primary" onClick={onChooseFolder}><FolderOpen size={17} /> 选择文件夹</button></div>
 
-  const unreadCount = state?.experiments.filter((item) => readRecords[item.id]?.revision !== state.activities[item.id].revision).length ?? 0
+  const unreadCount = visibleExperiments.filter((item) => readRecords[item.id]?.revision !== state?.activities[item.id].revision).length
 
   return <>
     {toolbarTarget ? createPortal(<button className="button button-light" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />刷新实验</button>, toolbarTarget) : null}
     <div className="experiments-shell">
-    {error || readError ? <div className="experiment-error"><CircleAlert size={16} />{error || readError}</div> : null}
-    <div className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong>{unreadCount ? <span className="experiments-unread-count">{unreadCount} 未读</span> : null}<span>{state?.experiments.length ?? 0}</span></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length ? <div className="experiments-groups">{state.groups.map((group) => {
-      const items = state.experiments.filter((item) => item.groupKey === group.key)
+    {error || readError || importanceError ? <div className="experiment-error"><CircleAlert size={16} />{error || readError || importanceError}</div> : null}
+    <div className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong>{unreadCount ? <span className="experiments-unread-count">{unreadCount} 未读</span> : null}<span>{visibleExperiments.length}</span></div><div className="experiments-tree-filter"><button type="button" className={`experiments-important-filter ${importantOnly ? 'active' : ''}`} aria-pressed={importantOnly} onClick={toggleImportantFilter}><Star size={13} fill={importantOnly ? 'currentColor' : 'none'} />仅看重要<span>{importantCount}</span></button></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length && (!importantOnly || visibleExperiments.length) ? <div className="experiments-groups">{state.groups.map((group) => {
+      const items = visibleExperiments.filter((item) => item.groupKey === group.key)
+      if (importantOnly && !items.length) return null
       const collapsed = collapsedGroups.has(group.key)
       return <div className="experiments-group" key={group.key}><div className="experiments-group-heading"><button className="experiments-group-toggle" onClick={() => setCollapsedGroups((previous) => { const next = new Set(previous); if (next.has(group.key)) next.delete(group.key); else next.add(group.key); return next })} aria-label={collapsed ? `展开 ${group.title}` : `收起 ${group.title}`} aria-expanded={!collapsed}><ChevronDown size={14} /></button><button className={`experiments-group-button ${active === group.key ? 'selected' : ''}`} onClick={() => setSelection(group.key)}><span>{group.title}</span><small>{items.length}</small></button></div>{collapsed ? null : <div className="experiments-child-list">{items.map((item) => {
         const activity = state.activities[item.id]
         const unread = readRecords[item.id]?.revision !== activity.revision
         const readLabel = unread ? '未读' : '已读'
-        return <button key={item.id} className={`experiments-child ${unread ? 'unread' : 'read'} ${active === item.id ? 'selected' : ''}`} onClick={() => setSelection(item.id)} data-experiment-id={item.id} data-read-status={unread ? 'unread' : 'read'} title={`${item.title} · ${readLabel}`} aria-label={`${item.title}，${readLabel}，最后更新 ${activityTime(activity.updatedAt)}，${activity.runCount} 次运行`} aria-current={active === item.id ? 'true' : undefined}>
+        return <button key={item.id} className={`experiments-child ${unread ? 'unread' : 'read'} ${active === item.id ? 'selected' : ''}`} onClick={() => setSelection(item.id)} data-experiment-id={item.id} data-read-status={unread ? 'unread' : 'read'} title={`${item.title} · ${item.importance?.value === 'important' ? '重要 · ' : ''}${readLabel}`} aria-label={`${item.title}，${item.importance?.value === 'important' ? '重要实验，' : ''}${readLabel}，最后更新 ${activityTime(activity.updatedAt)}，${activity.runCount} 次运行`} aria-current={active === item.id ? 'true' : undefined}>
           <span className="experiment-child-dot" aria-hidden="true" />
-          <span className="experiment-child-main"><span className="experiment-child-title">{item.title}</span><small className="experiment-child-meta"><time dateTime={activity.updatedAt || undefined} title={`最后更新：${activity.updatedAt ? revisionTime(activity.updatedAt) : '—'}`}>{activityTime(activity.updatedAt)}</time><span>{activity.runCount} 次运行</span></small></span>
+          <span className="experiment-child-main"><span className="experiment-child-title">{item.importance?.value === 'important' ? <Star size={12} className="experiment-important-star" fill="currentColor" aria-hidden="true" /> : null}<span>{item.title}</span></span><small className="experiment-child-meta"><time dateTime={activity.updatedAt || undefined} title={`最后更新：${activity.updatedAt ? revisionTime(activity.updatedAt) : '—'}`}>{activityTime(activity.updatedAt)}</time><span>{activity.runCount} 次运行</span></small></span>
         </button>
       })}</div>}</div>
-    })}</div> : <div className="experiments-tree-empty">还没有实验组。Agent 创建后会自动出现。</div>}<div className="experiments-tree-foot"><Clock3 size={13} />本地文件自动同步</div></aside>
+    })}</div> : <div className="experiments-tree-empty">{importantOnly ? '还没有标记为重要的实验。' : '还没有实验组。Agent 创建后会自动出现。'}</div>}<div className="experiments-tree-foot"><Clock3 size={13} />本地文件自动同步</div></aside>
     <main className="experiments-main">
       {loading ? <div className="experiments-main-empty">正在读取实验记录…</div>
-        : selectedExperiment ? <ExperimentContent key={selectedExperiment.id} item={selectedExperiment} state={state!} folderPath={folderPath} focusSource={focusSource} />
+        : importantOnly && !visibleExperiments.length ? <div className="experiments-main-empty experiments-important-empty"><Star size={24} /><h3>还没有重要实验</h3><p>打开实验，点击标题旁的星标即可标记。</p><button className="button button-light" onClick={() => setImportantOnly(false)}>显示全部实验</button></div>
+        : selectedExperiment ? <ExperimentContent key={selectedExperiment.id} item={selectedExperiment} state={state!} folderPath={folderPath} focusSource={focusSource} importanceBusy={Boolean(importanceBusy)} onToggleImportance={() => void toggleImportance(selectedExperiment)} />
           : selectedGroup ? <div className="experiment-content">
             <div className="experiment-content-kicker">实验组 / {selectedGroup.key}</div>
             <h2>{selectedGroup.title}</h2>
@@ -409,12 +449,12 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
             <div className="experiment-facts">
               {selectedGroup.metric ? <div><small>主要指标</small><strong>{selectedGroup.metric}</strong></div> : null}
               {selectedGroup.configPath ? <div><small>公共配置</small><code>{selectedGroup.configPath}</code></div> : null}
-              <div><small>实验数量</small><strong>{state!.experiments.filter((item) => item.groupKey === selectedGroup.key).length}</strong></div>
+              <div><small>实验数量</small><strong>{visibleExperiments.filter((item) => item.groupKey === selectedGroup.key).length}</strong></div>
             </div>
             <div className="experiment-run-head"><div><span className="eyebrow">EXPERIMENTS</span><h3>具体实验</h3></div></div>
-            <div className="experiment-item-list">{state!.experiments.filter((item) => item.groupKey === selectedGroup.key).map((item) => {
+            <div className="experiment-item-list">{visibleExperiments.filter((item) => item.groupKey === selectedGroup.key).map((item) => {
               const runs = state!.runs.filter((run) => run.experimentId === item.id)
-              return <button key={item.id} onClick={() => setSelection(item.id)}><div><strong>{item.title}</strong><small>{item.overview?.subtitle || item.subtitle || item.question || item.id}</small></div><span>{runs.length} 次运行</span><ArrowRight size={15} /></button>
+              return <button key={item.id} onClick={() => setSelection(item.id)}><div><strong>{item.importance?.value === 'important' ? <Star size={12} className="experiment-important-star" fill="currentColor" aria-hidden="true" /> : null}{item.title}</strong><small>{item.overview?.subtitle || item.subtitle || item.question || item.id}</small></div><span>{runs.length} 次运行</span><ArrowRight size={15} /></button>
             })}</div>
           </div> : <div className="experiments-start">
             <div className="experiments-start-icon"><Activity size={27} /></div>

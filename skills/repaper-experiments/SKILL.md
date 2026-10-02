@@ -2,12 +2,22 @@
 name: repaper-experiments
 description: Record and maintain experiments for a re:paper project while running research code. Use when a paper workspace has .repaper/project.json and work involves evaluations, benchmarks, ablations, or result comparisons.
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # re:paper experiments
 
 Keep the project's experiment page accurate while doing research work. The CLI writes local records; the desktop app reads those files. Use the project's existing Codex or Claude Code session for the actual work.
+
+## Paper importance
+
+An experiment may have an `importance` object with `value` (`important` or `normal`), `source` (`manual` or `agent`), `reason`, `revision`, and `updatedAt`. Missing importance means normal with revision 0. Read it with `repaper show <group>/<experiment> --json` before changing it.
+
+Importance reflects the experiment's role in the current paper: supporting a core claim, a decisive ablation, an applicability boundary, or a negative finding that changes research direction. Statistical significance, run success, and a large metric alone do not establish that role. When organizing experiment results, mark important experiments when the manuscript and inspected evidence justify it. State that connection in a short reason.
+
+Use `repaper experiment importance <group>/<experiment> important --by agent --expected-revision <current-revision> --reason "<paper-specific basis>"`. To revise an Agent-owned mark use `normal` with a reason. Agent calls default to `--by agent`; do not use `--by manual` or write record JSON directly to bypass manual choices. Both important and normal marks with `source: manual` are protected. On conflicts, reread the record rather than forcing an overwrite.
+
+Manual stars and unstars are stored by the app; a human using the CLI can explicitly select `--by manual`. Importance changes keep experiment results, overview versions, run counts, last experiment activity, and read status intact. Overview organization consumes this metadata while preserving its own manual pins.
 
 ## CLI
 

@@ -4,7 +4,7 @@ import type { Submission as LegacySubmission, WorkspaceData } from '../shared/mo
 import type { CodexThreadPage } from '../shared/codex'
 import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../shared/sessions'
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../shared/writing'
-import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
+import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
 
@@ -50,6 +50,7 @@ declare global {
       writingOpenFolder: (folderPath: string) => Promise<void>
       writingOpenPdfFolder: (folderPath: string) => Promise<void>
       experimentsGet: (folderPath: string) => Promise<ExperimentWorkspace>
+      experimentsImportanceSet: (folderPath: string, experimentId: string, value: ExperimentImportanceValue, expectedRevision: number) => Promise<ExperimentItem>
       experimentsLog: (folderPath: string, runId: string) => Promise<string>
       experimentsFigure: (folderPath: string, experimentId: string, path: string) => Promise<string>
       experimentsRevisions: (folderPath: string, experimentId: string) => Promise<ExperimentOverview[]>

@@ -1,11 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { createReadStream } from 'node:fs'
-import { lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type {
-  ExperimentGitSnapshot, ExperimentGroup, ExperimentItem, ExperimentOverview, ExperimentOverviewDraft,
+  ExperimentImportanceSource, ExperimentImportanceValue, ExperimentGitSnapshot, ExperimentGroup, ExperimentItem, ExperimentOverview, ExperimentOverviewDraft,
   ExperimentOverviewSection, ExperimentResultBlock, ExperimentRun, ExperimentSetting, ExperimentWorkspace
 } from '../../shared/experiments'
 
@@ -53,6 +53,27 @@ async function atomicJson(path: string, value: unknown): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   await rename(temporary, path)
+}
+
+async function withExperimentLock<T>(root: string, id: string, action: () => Promise<T>): Promise<T> {
+  await initializeProject(root)
+  const path = experimentPath(root, id) + '.lock'
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try { handle = await open(path, 'wx'); await handle.writeFile(String(process.pid)); break }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      const pid = Number(await readFile(path, 'utf8').catch(() => ''))
+      if (Number.isInteger(pid) && pid > 0) {
+        try { process.kill(pid, 0) }
+        catch (reason) { if ((reason as NodeJS.ErrnoException).code === 'ESRCH') await unlink(path).catch(() => undefined) }
+      }
+      await new Promise(done => setTimeout(done, 100))
+    }
+  }
+  if (!handle) throw new Error('实验正在被另一个会话更新，请稍后重试。')
+  try { return await action() }
+  finally { await handle.close(); await unlink(path) }
 }
 
 async function readDirectory<T>(path: string): Promise<T[]> {
@@ -218,6 +239,10 @@ async function cleanResults(root: string, experimentId: string, blocks: Experime
 }
 
 export async function publishOverview(root: string, id: string, draft: ExperimentOverviewDraft): Promise<ExperimentItem> {
+  return withExperimentLock(root, id, () => publishOverviewNow(root, id, draft))
+}
+
+async function publishOverviewNow(root: string, id: string, draft: ExperimentOverviewDraft): Promise<ExperimentItem> {
   const path = experimentPath(root, id)
   const item = await readJson<ExperimentItem>(path)
   if (!draft || !Array.isArray(draft.keySettings) || !Array.isArray(draft.results)) {
@@ -264,6 +289,10 @@ export async function listOverviewRevisions(root: string, id: string): Promise<E
 }
 
 export async function ensureExperiment(root: string, id: string, values: Partial<Pick<ExperimentItem, 'title' | 'subtitle' | 'designReason' | 'keySettings' | 'question' | 'description' | 'factor' | 'configPath'>>): Promise<ExperimentItem> {
+  return withExperimentLock(root, id, () => ensureExperimentNow(root, id, values))
+}
+
+async function ensureExperimentNow(root: string, id: string, values: Partial<Pick<ExperimentItem, 'title' | 'subtitle' | 'designReason' | 'keySettings' | 'question' | 'description' | 'factor' | 'configPath'>>): Promise<ExperimentItem> {
   await initializeProject(root)
   const [groupKey, key] = splitExperimentId(id)
   if (!(await stat(groupPath(root, groupKey)).catch(() => null))) throw new Error(`实验组 ${groupKey} 不存在，请先运行 group ensure。`)
@@ -285,6 +314,7 @@ export async function ensureExperiment(root: string, id: string, values: Partial
     keySettings: old?.keySettings,
     results: old?.results,
     overview: old?.overview,
+    importance: old?.importance,
     question: values.question?.trim() ?? old?.question ?? '',
     description: values.description?.trim() ?? old?.description ?? '',
     factor: values.factor?.trim() ?? old?.factor ?? '',
@@ -294,7 +324,7 @@ export async function ensureExperiment(root: string, id: string, values: Partial
   }
   await atomicJson(path, item)
   if (values.subtitle === undefined && values.designReason === undefined && settings === undefined) return item
-  return publishOverview(root, id, {
+  return publishOverviewNow(root, id, {
     subtitle: values.subtitle ?? old?.overview?.subtitle ?? '',
     designReason: values.designReason ?? old?.overview?.designReason ?? '',
     keySettings: settings ?? old?.overview?.keySettings ?? [],
@@ -304,6 +334,10 @@ export async function ensureExperiment(root: string, id: string, values: Partial
 }
 
 export async function updateExperiment(root: string, id: string, values: Partial<Pick<ExperimentItem, 'subtitle' | 'designReason' | 'keySettings' | 'results' | 'result' | 'conclusion'>>): Promise<ExperimentItem> {
+  return withExperimentLock(root, id, () => updateExperimentNow(root, id, values))
+}
+
+async function updateExperimentNow(root: string, id: string, values: Partial<Pick<ExperimentItem, 'subtitle' | 'designReason' | 'keySettings' | 'results' | 'result' | 'conclusion'>>): Promise<ExperimentItem> {
   const path = experimentPath(root, id)
   const item = await readJson<ExperimentItem>(path)
   if (values.subtitle && values.subtitle.length > 300 || values.designReason && values.designReason.length > 3000 || values.conclusion && values.conclusion.length > 3000) throw new Error('实验概览文字过长。')
@@ -314,7 +348,7 @@ export async function updateExperiment(root: string, id: string, values: Partial
     if (values.keySettings !== undefined && values.results === undefined && item.overview?.results.length && JSON.stringify(settings) !== JSON.stringify(item.overview.keySettings)) {
       throw new Error('已有结果时，关键设置需与结果和结论一起发布；请使用 experiment overview --file。')
     }
-    return publishOverview(root, id, {
+    return publishOverviewNow(root, id, {
       subtitle: values.subtitle ?? item.overview?.subtitle ?? '',
       designReason: values.designReason ?? item.overview?.designReason ?? '',
       keySettings: settings,
@@ -325,6 +359,22 @@ export async function updateExperiment(root: string, id: string, values: Partial
   const updated: ExperimentItem = { ...item, result: values.result?.trim() ?? item.result, conclusion: values.conclusion?.trim() ?? item.conclusion, updatedAt: now() }
   await atomicJson(path, updated)
   return updated
+}
+
+export async function setExperimentImportance(root: string, id: string, value: ExperimentImportanceValue, source: ExperimentImportanceSource, expectedRevision: number, reason = ''): Promise<ExperimentItem> {
+  if (!['important', 'normal'].includes(value) || !['manual', 'agent'].includes(source)) throw new Error('重要度需要 important/normal，设置来源需要 manual/agent。')
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('重要度需要当前 revision；未设置时使用 0。')
+  if (typeof reason !== 'string' || reason.length > 1000 || source === 'agent' && !reason.trim()) throw new Error('Agent 设置重要度时需要说明与论文论证或研究决策的关系，最多 1000 字。')
+  return withExperimentLock(root, id, async () => {
+    const path = experimentPath(root, id)
+    const item = await readJson<ExperimentItem>(path)
+    if ((item.importance?.revision ?? 0) !== expectedRevision) throw new Error('实验重要度已有更新，请重新读取后设置。')
+    if (source === 'agent' && item.importance?.source === 'manual') throw new Error('此实验的重要度已由用户设置，Agent 不能覆盖。')
+    if (item.importance?.value === value && item.importance.source === source && item.importance.reason === reason.trim()) return item
+    const updated: ExperimentItem = { ...item, importance: { value, source, reason: reason.trim(), revision: expectedRevision + 1, updatedAt: now() } }
+    await atomicJson(path, updated)
+    return updated
+  })
 }
 
 export async function readExperimentFigure(root: string, id: string, path: string): Promise<string> {

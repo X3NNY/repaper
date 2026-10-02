@@ -5,12 +5,12 @@ import { lstat, readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import {
   annotateRun, completeRun, createRun, ensureExperiment, ensureGroup, findProjectRoot,
-  importRun, initializeProject, listOverviewRevisions, loadExperiments, publishOverview, readRunLog, updateExperiment
+  importRun, initializeProject, listOverviewRevisions, loadExperiments, publishOverview, readRunLog, setExperimentImportance, updateExperiment
 } from '../electron/main/experiments'
 import { ensureProjectInstructions } from '../electron/main/projectSetup'
 import { WritingWorkspaceManager } from '../electron/main/writing'
 import { loadSubmissions, saveSubmission, saveSubmissionEvent } from '../electron/main/submissions'
-import type { ExperimentOverviewDraft, ExperimentResultBlock, ExperimentSetting } from '../shared/experiments'
+import type { ExperimentImportanceSource, ExperimentImportanceValue, ExperimentOverviewDraft, ExperimentResultBlock, ExperimentSetting } from '../shared/experiments'
 import { submissionEventSortKey } from '../shared/submissions'
 import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/submissions'
 import { loadOverview, publishJourney, saveOverviewNote } from '../electron/main/overview'
@@ -38,6 +38,7 @@ const HELP = `re:paper 项目命令
   repaper experiment update <组>/<key> [--subtitle <副标题>] [--design <设计原因>] [--setting <名称=关键设置> ...] [--paragraph <结果段落> ... --source-run <运行ID> ... | --results-file <JSON文件>] [--conclusion <对论文的总结>]
   repaper experiment overview <组>/<key> --file <完整概览JSON>
   repaper experiment revisions <组>/<key> [--json]
+  repaper experiment importance <组>/<key> <important|normal> --expected-revision <版本> [--by agent|manual] [--reason <依据>]
   repaper run <组>/<实验> [--label <运行名称>] [--metrics <JSON文件>] [--artifact <路径>] -- <程序> [参数...]
   repaper run annotate <运行ID> [--label <运行名称>] [--summary <摘要>] [--metric <名称=数值>] [--source <路径>] [--artifact <路径>]
   repaper run import <组>/<实验> --source <已有证据文件> [--source <文件>...] --summary <历史结果说明> [--label <名称>] [--metric <名称=数值>]
@@ -350,6 +351,14 @@ async function main(): Promise<void> {
       output(`已发布实验概览 ${item.id} · ${item.overview?.revisionId ?? '未变更'}`, false)
       return
     }
+    if (verb === 'importance') {
+      const parsed = parse(args, ['by', 'reason', 'expected-revision'])
+      if (parsed.positionals.length !== 2) throw new Error('用法：repaper experiment importance <组>/<实验> <important|normal> --expected-revision <版本> [--by agent|manual] [--reason <依据>]')
+      const revision = Number(requireArgument(one(parsed, 'expected-revision'), 'experiment importance --expected-revision <版本>'))
+      const item = await setExperimentImportance(root, parsed.positionals[0], parsed.positionals[1] as ExperimentImportanceValue, (one(parsed, 'by') ?? 'agent') as ExperimentImportanceSource, revision, one(parsed, 'reason') ?? '')
+      output(`已将实验 ${item.id} 标记为${item.importance?.value === 'important' ? '重要' : '普通'} · revision ${item.importance?.revision}`, false)
+      return
+    }
     if (verb === 'revisions') {
       const json = args.includes('--json')
       const id = args.find((arg) => arg !== '--json')
@@ -358,7 +367,7 @@ async function main(): Promise<void> {
       output(json ? revisions : revisions.map((revision) => `${revision.revisionId} · ${revision.updatedAt} · ${revision.changed.join(', ')}`).join('\n') || '暂无概览修订。', json)
       return
     }
-    throw new Error('用法：repaper experiment ensure|update|overview|revisions ...')
+    throw new Error('用法：repaper experiment ensure|update|overview|revisions|importance ...')
   }
   if (command === 'run') {
     if (args[0] === 'import') {
@@ -390,7 +399,7 @@ async function main(): Promise<void> {
     const state = await loadExperiments(root)
     const items = state[kind as 'groups' | 'experiments' | 'runs']
     if (json) output(items, true)
-    else output(items.map((item) => kind === 'groups' ? `${(item as typeof state.groups[number]).key} · ${(item as typeof state.groups[number]).title}` : kind === 'experiments' ? `${(item as typeof state.experiments[number]).id} · ${(item as typeof state.experiments[number]).title}` : `${(item as typeof state.runs[number]).id} · ${(item as typeof state.runs[number]).experimentId} · ${(item as typeof state.runs[number]).status}`).join('\n') || '暂无记录。', false)
+    else output(items.map((item) => kind === 'groups' ? `${(item as typeof state.groups[number]).key} · ${(item as typeof state.groups[number]).title}` : kind === 'experiments' ? `${(item as typeof state.experiments[number]).importance?.value === 'important' ? '★ ' : ''}${(item as typeof state.experiments[number]).id} · ${(item as typeof state.experiments[number]).title}` : `${(item as typeof state.runs[number]).id} · ${(item as typeof state.runs[number]).experimentId} · ${(item as typeof state.runs[number]).status}`).join('\n') || '暂无记录。', false)
     return
   }
   if (command === 'show') {

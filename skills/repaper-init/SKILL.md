@@ -2,7 +2,7 @@
 name: repaper-init
 description: Initialize a local paper directory for re:paper, adopt existing LaTeX sources and historical experiment evidence, and maintain AGENTS.md entry points for manuscript, experiment, submission, and research-journey work. Use when linking or refreshing a paper workspace.
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Initialize a re:paper workspace
@@ -16,9 +16,9 @@ Initialization is idempotent even when the project marker already exists. Use `r
 After initialization, confirm that the managed section gives future sessions these task entry points:
 
 - Manuscript: read and edit the active sources in `.paper/`, starting at `manuscript.tex` and following included files, bibliography, and figures. Use the Git repository inside `.paper/` for manuscript versions. `repaper-init` handles source adoption; routine manuscript edits use file tools or a writing skill available in that session.
-- Experiments: use `repaper-experiments` to inspect current records with `repaper list experiments --json` and `repaper show <group>/<experiment> --json`, then maintain them through the experiment and run CLI commands.
+- Experiments: use `repaper-experiments` to inspect current records with `repaper list experiments --json` and `repaper show <group>/<experiment> --json`, then maintain them through the experiment and run CLI commands. Importance uses `repaper experiment importance <group>/<experiment> important|normal --by agent --expected-revision <importance.revision> --reason <paper-specific basis>`; an absent mark has revision 0. Preserve manual important and normal choices, and never use `--by manual` as an Agent.
 - Submissions: use `repaper-submissions`, start with `repaper submission timeline --json`, and read complete events and sources with `repaper submission show <submission-id> --json`. Add or update attempts and events through the CLI, retain original review wording and ratings, and check the actual submitted manuscript version.
-- Research journey: use `repaper-overview` and `repaper overview context --json` to read the paper's claims, decisions, evidence relationships, notes, and changed source index. Record author thinking with `repaper overview note`; publish sourced incremental updates with `repaper overview publish --file <draft.json>`. Preserve manual edits and original evidence. Missing motivations remain unknown.
+- Research journey: use `repaper-overview` and `repaper overview context --json` to read the paper's claims, decisions, evidence relationships, notes, and changed source index. Record author thinking with `repaper overview note`; publish sourced incremental updates with `repaper overview publish --file <draft.json>`. Prioritize important experiment evidence while preserving manual overview pins, manual importance choices, and original evidence. Missing motivations remain unknown.
 
 The managed section describes supported interfaces and storage locations; mutable manuscript text, results, and submission history stay in their own stores. Refresh only the re:paper block and preserve other instructions. If an older launcher cannot generate these entry points, update the installed re:paper Skills and CLI from the app's settings and rerun initialization; report the limitation if that update is unavailable.
 

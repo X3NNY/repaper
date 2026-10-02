@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpRight, ChevronDown, CircleAlert, FileText, FlaskConical, FolderOpen, GitBranch, LoaderCircle, Pencil, Pin, Plus, RefreshCw, Send, Sparkles, TerminalSquare, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, CircleAlert, FileText, FlaskConical, FolderOpen, GitBranch, LoaderCircle, Pencil, Pin, Plus, RefreshCw, Send, Sparkles, Star, TerminalSquare, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -32,7 +32,7 @@ function Markdown({ text }: { text: string }) {
 }
 function NodeButton({ node, selected, onSelect, compact = false }: { node: OverviewNode; selected: boolean; onSelect: () => void; compact?: boolean }) {
   return <button type="button" data-journey-node-id={node.id} className={['journey-node', selected ? 'selected' : '', node.kind === 'decision' ? 'is-turn' : '', node.status === 'stopped' || node.status === 'superseded' ? 'is-retired' : '', compact ? 'compact' : ''].join(' ')} aria-pressed={selected} onClick={onSelect}>
-    <span className="journey-node-meta"><span>{overviewKindLabels[node.kind]}{statusLabels[node.status] ? ' · ' + statusLabels[node.status] : ''}</span><time>{nodeTime(node)}</time></span>
+    <span className="journey-node-meta"><span>{node.origin === 'record' && node.sources.some(source => source.experimentImportance?.value === 'important') ? <Star size={11} className="journey-important-star" fill="currentColor" aria-label="重要实验" /> : null}{overviewKindLabels[node.kind]}{statusLabels[node.status] ? ' · ' + statusLabels[node.status] : ''}</span><time>{nodeTime(node)}</time></span>
     <strong>{node.title}</strong>
     {node.kind === 'decision' && !compact && (node.before || node.after) ? <span className="journey-node-turn">{node.before ? <span><small>原来</small>{node.before}</span> : null}{node.after ? <span><small>现在</small>{node.after}</span> : null}</span> : null}
     {node.summary && !compact ? <span className="journey-node-summary">{node.summary}</span> : null}

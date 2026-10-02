@@ -22,6 +22,7 @@ const instructions = [
   '',
   '- Use `repaper-experiments` for experiment questions, executions, and record updates. Read `repaper list experiments --json`, then `repaper show <group>/<experiment> --json`; inspect runs with `repaper list runs --json` and `repaper show <run-id> --log` when needed.',
   '- Create or update records with `repaper group ensure`, `repaper experiment ensure`, `repaper experiment update`, and `repaper experiment overview <group>/<experiment> --file <draft.json>`. Record new executions with `repaper run <group>/<experiment> -- <program> [args]`; import existing evidence with `repaper run import`. Keep design reasons, key settings, results, and conclusions grounded in the linked runs and source files.',
+  '- Experiment importance is important/normal. Read the current importance object with `repaper show <group>/<experiment> --json`; missing importance has revision 0. Agent updates use `repaper experiment importance <group>/<experiment> important|normal --by agent --expected-revision <revision> --reason <paper-specific basis>`. Preserve manual marks, including manual normal; do not use --by manual as an Agent. Importance reflects the role in the paper, including decisive negative findings, and does not replace evidence.',
   '- Experiment records live in `.repaper/experiments/`. Use the CLI to maintain IDs and overview history. Initialization imports historical evidence without rerunning it or presenting it as a new execution.',
   '',
   '### Read or maintain submissions',

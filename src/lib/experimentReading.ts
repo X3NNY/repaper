@@ -43,7 +43,7 @@ async function experimentActivity(item: ExperimentItem, runs: ExperimentRun[]): 
   const dates = [item.updatedAt, item.createdAt, item.overview?.updatedAt,
     ...runs.flatMap((run) => [run.updatedAt, run.startedAt, run.endedAt, run.importedAt])]
   const latest = dates.reduce<number>((maximum, value) => Math.max(maximum, value ? Date.parse(value) || 0 : 0), 0)
-  const content = JSON.stringify([item, [...runs].sort((a, b) => a.id.localeCompare(b.id))])
+  const content = JSON.stringify([{ ...item, importance: undefined }, [...runs].sort((a, b) => a.id.localeCompare(b.id))])
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content))
   const revision = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
   return { updatedAt: latest ? new Date(latest).toISOString() : '', runCount: runs.length, revision }

@@ -2,7 +2,7 @@
 name: repaper-overview
 description: Read and maintain a re:paper project's research journey, claims, evidence, decisions, stopped routes, and submission-driven revisions. Use when organizing the overview or explaining how a paper's ideas and conclusions evolved.
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # re:paper research journey
@@ -27,7 +27,15 @@ Relationships have explicit meaning: `supports`, `limits`, `challenges`, `respon
 
 Use `parentId` for branches; avoid cycles. Retain stopped routes and superseded claims with their earlier evidence. Mark future work `planned` and avoid describing planned evaluations as findings. Main items explain the paper's reasoning or current submission and revision; group repeated runs and ordinary commits into detail records. Do not hide meaningful negative findings, failed directions, or unresolved review challenges. `recordImportance` can place fact IDs in `main` or `detail`; user `edits` take precedence.
 
-On subsequent requests, read changed sources and related context, and update the existing stable IDs. A wording change is not a new milestone. A changed claim should keep its predecessor with a `supersedes` relationship. Preserve user notes and edits; do not recreate the whole graph or change original business records as part of overview organization.
+On subsequent requests, read changed sources and related context, and update the existing stable IDs. A wording change is not a new milestone. A changed claim should keep its predecessor with a `supersedes` relationship. Preserve user notes and edits; do not recreate the whole graph or change original business records as part of overview organization, except for justified experiment importance updates through the dedicated CLI below.
+
+## Experiment importance
+
+Experiment sources can carry `experimentImportance` with `value`, `source`, `reason`, and `revision`. Prioritize important experiments when connecting claims, boundaries, and research decisions. Keep meaningful negative results and stopped routes visible. A star is a relevance signal; the relationship still needs evidence.
+
+When organization reveals a clear role for an unmarked or Agent-marked experiment, read `repaper show <group>/<experiment> --json` and set it with `repaper experiment importance <group>/<experiment> important --by agent --expected-revision <current-revision> --reason "<paper-specific basis>"`. Missing importance has revision 0. An Agent-owned mark can be changed to `normal` with a reason. Never override `source: manual`, including a manual normal mark; never use `--by manual` as an Agent.
+
+Changing experiment importance changes its source fingerprint. Reread overview context after setting marks and use the new fingerprints when publishing. Important experiment facts enter the main journey unless a user overview edit puts them in detail. Existing manual pins in `edits` retain priority.
 
 ## Publish incrementally
 

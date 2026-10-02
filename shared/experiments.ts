@@ -9,6 +9,17 @@ export interface ExperimentGroup {
   updatedAt: string
 }
 
+export type ExperimentImportanceValue = 'important' | 'normal'
+export type ExperimentImportanceSource = 'manual' | 'agent'
+
+export interface ExperimentImportance {
+  value: ExperimentImportanceValue
+  source: ExperimentImportanceSource
+  reason: string
+  revision: number
+  updatedAt: string
+}
+
 export interface ExperimentItem {
   id: string
   groupKey: string
@@ -19,6 +30,7 @@ export interface ExperimentItem {
   keySettings?: ExperimentSetting[]
   results?: ExperimentResultBlock[]
   overview?: ExperimentOverview
+  importance?: ExperimentImportance
   question: string
   description: string
   factor: string

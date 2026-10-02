@@ -12,10 +12,10 @@ import { CodexBridge } from './codexBridge'
 import { ClaudeSessions } from './claudeSessions'
 import { SessionTerminalManager } from './sessionTerminal'
 import { WritingWorkspaceManager } from './writing'
-import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog } from './experiments'
+import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog, setExperimentImportance } from './experiments'
 import { adoptLegacySubmission, deleteSubmission, deleteSubmissionEvent, linkSubmissionAgent, loadSubmissions, markSubmissionAgentSent, saveSubmission, saveSubmissionEvent, submissionAgentDeliveryIds, submissionSourcePath } from './submissions'
 import { ensureCliLauncher, ensureSubmissionSkill, installSkill, skillStatuses } from './skillInstaller'
-import type { SkillProvider } from '../../shared/experiments'
+import type { ExperimentImportanceValue, SkillProvider } from '../../shared/experiments'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject } from '../../shared/overview'
 import { editOverviewNode, loadOverview, overviewDirectory, overviewMaterial, saveOverviewNote } from './overview'
 import { OverviewAgentManager } from './overviewAgent'
@@ -400,6 +400,8 @@ app.whenReady().then(async () => {
     watchExperiments(folder)
     return state
   })
+  ipcMain.handle('experiments:importance:set', async (_event, folderPath: string, id: string, value: ExperimentImportanceValue, expectedRevision: number) =>
+    setExperimentImportance(await requireFolder(folderPath), id, value, 'manual', expectedRevision))
   ipcMain.handle('overview:get', async (_event, folderPath: string, project?: OverviewProject) => {
     const folder = await requireFolder(folderPath)
     const state = await loadOverview(folder, project)

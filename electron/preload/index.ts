@@ -3,7 +3,7 @@ import type { Submission as LegacySubmission, WorkspaceData } from '../../shared
 import type { CodexThreadPage } from '../../shared/codex'
 import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
 import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../../shared/writing'
-import type { ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
+import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
 
@@ -61,6 +61,7 @@ const paperApi = {
   writingOpenFolder: (folderPath: string): Promise<void> => ipcRenderer.invoke('writing:open-folder', folderPath),
   writingOpenPdfFolder: (folderPath: string): Promise<void> => ipcRenderer.invoke('writing:open-pdf-folder', folderPath),
   experimentsGet: (folderPath: string): Promise<ExperimentWorkspace> => ipcRenderer.invoke('experiments:get', folderPath),
+  experimentsImportanceSet: (folderPath: string, experimentId: string, value: ExperimentImportanceValue, expectedRevision: number): Promise<ExperimentItem> => ipcRenderer.invoke('experiments:importance:set', folderPath, experimentId, value, expectedRevision),
   experimentsLog: (folderPath: string, runId: string): Promise<string> => ipcRenderer.invoke('experiments:log', folderPath, runId),
   experimentsFigure: (folderPath: string, experimentId: string, path: string): Promise<string> => ipcRenderer.invoke('experiments:figure', folderPath, experimentId, path),
   experimentsRevisions: (folderPath: string, experimentId: string): Promise<ExperimentOverview[]> => ipcRenderer.invoke('experiments:revisions', folderPath, experimentId),

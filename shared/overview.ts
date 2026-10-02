@@ -1,4 +1,5 @@
 import type { Paper } from './model'
+import type { ExperimentImportance } from './experiments'
 import type { SessionProvider } from './sessions'
 
 export type OverviewKind = 'question' | 'claim' | 'finding' | 'decision' | 'route' | 'experiment' | 'manuscript' | 'submission' | 'review' | 'note' | 'plan'
@@ -20,6 +21,7 @@ export interface OverviewSource {
   excerpt: string
   target: OverviewTarget
   detail?: boolean
+  experimentImportance?: ExperimentImportance
   materials?: { path: string; label: string }[]
 }
 
