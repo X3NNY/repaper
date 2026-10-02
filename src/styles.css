@@ -898,6 +898,47 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .global-settings-row .button:disabled { transform: none; opacity: .78; }
 .global-settings-error { display: flex; align-items: center; gap: 7px; margin: 0 27px 15px; padding: 10px; border-radius: 6px; background: #fff0ec; color: #aa6053; font-size: 11px; }
 .global-settings-note { padding: 14px 27px; border-top: 1px solid #e9eee7; background: #f9fbf8; color: #91a194; font-size: 10px; }
+.template-settings-head { align-items: center; flex-wrap: wrap; }
+.template-import-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.template-default-row { border-top: 1px solid #e9eee7; }
+.template-settings-list { border-top: 1px solid #e9eee7; }
+.template-settings-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(130px, 200px) 125px; align-items: center; gap: 15px; padding: 17px 27px; }
+.template-settings-row + .template-settings-row { border-top: 1px solid #edf1eb; }
+.template-row-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: #f0f5ed; color: #6d8c70; }
+.template-row-copy, .template-row-main { min-width: 0; }
+.template-row-copy strong { display: flex; align-items: center; gap: 7px; color: #385943; font-size: 13px; }
+.template-row-copy strong > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.template-row-copy p { margin: 5px 0; color: #809585; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.template-row-copy > small { display: block; margin-top: 5px; color: #a0ada1; font-size: 10px; }
+.template-default-badge { flex-shrink: 0; padding: 2px 5px; border-radius: 4px; background: #eaf3e5; color: #5d865c; font-size: 9px; font-weight: 500; }
+.template-row-main { display: flex; flex-direction: column; gap: 5px; }
+.template-row-main > small { color: #a0ada1; font-size: 10px; }
+.template-row-main code { overflow: hidden; color: #6d8976; text-overflow: ellipsis; white-space: nowrap; font: 10px 'Cascadia Code', Consolas, monospace; }
+.template-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.template-row-actions .icon-button { width: 30px; height: 32px; flex-shrink: 0; }
+.template-row-actions .template-delete-button:hover { background: #fcf0eb; color: #ae6857; }
+.template-delete-confirm { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 8px; border: 1px solid #edcfc3; border-radius: 5px; background: #fff4ef; color: #ae6857; font-size: 10px; white-space: nowrap; }
+.template-builtin-label { justify-self: end; color: #a6b0a5; font-size: 10px; }
+.template-library-message, .template-library-loading { display: flex; align-items: center; gap: 7px; padding: 11px 27px; color: #688b6e; font-size: 11px; }
+.template-library-loading { min-height: 65px; color: #8da092; }
+.template-import-summary { display: flex; flex-direction: column; gap: 6px; padding: 11px 13px; border: 1px solid #e3ebdf; border-radius: 7px; background: #f8fbf5; }
+.template-import-summary span { color: #9aaa96; font-size: 10px; }
+.template-import-summary strong { overflow: hidden; color: #648267; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.writing-template-dialog .field-label small { margin-left: 5px; color: #a2afa4; font-size: 10px; font-weight: 400; }
+.template-dialog-error { display: flex; align-items: flex-start; gap: 7px; padding: 10px 12px; border-radius: 6px; background: #fff0ec; color: #aa6053; font-size: 11px; line-height: 1.6; }
+.template-dialog-error > svg { flex-shrink: 0; margin-top: 1px; }
+.writing-templates-manage { margin-top: 16px; }
+@media (max-width: 800px) {
+  .template-settings-row { grid-template-columns: 32px minmax(0, 1fr) 125px; gap: 10px; padding: 16px 22px; }
+  .template-row-main { grid-column: 2; grid-row: 2; }
+  .template-row-actions, .template-builtin-label { grid-column: 3; grid-row: 1 / 3; }
+}
+@media (max-width: 550px) {
+  .template-import-actions { width: 100%; }
+  .template-import-actions .button { flex: 1; }
+  .template-settings-row { grid-template-columns: 28px minmax(0, 1fr) 105px; padding-inline: 17px; }
+  .template-row-icon { width: 28px; height: 32px; }
+}
 
 @container experiment-panel (max-width: 800px) {
   .experiment-run-layout { grid-template-columns: 1fr; }

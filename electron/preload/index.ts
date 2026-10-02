@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { Submission as LegacySubmission, WorkspaceData } from '../../shared/model'
 import type { CodexThreadPage } from '../../shared/codex'
 import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
-import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../../shared/writing'
+import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingTemplateDraft, WritingTemplateImport, WritingTemplateLibrary, WritingWorkspace } from '../../shared/writing'
 import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
@@ -44,6 +44,13 @@ const paperApi = {
     return () => ipcRenderer.removeListener('session:terminal:event', listener)
   },
   writingGet: (folderPath: string): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:get', folderPath),
+  writingTemplatesList: (): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:list'),
+  writingTemplateImportChoose: (kind: 'folder' | 'file'): Promise<WritingTemplateImport | null> => ipcRenderer.invoke('writing:templates:import:choose', kind),
+  writingTemplateImportSave: (token: string, draft: WritingTemplateDraft): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:import:save', token, draft),
+  writingTemplateImportCancel: (token: string): Promise<void> => ipcRenderer.invoke('writing:templates:import:cancel', token),
+  writingTemplateUpdate: (id: WritingTemplate, draft: WritingTemplateDraft): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:update', id, draft),
+  writingTemplateRemove: (id: WritingTemplate): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:remove', id),
+  writingTemplateSetDefault: (id: WritingTemplate | ''): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:default', id),
   writingInitialize: (folderPath: string, template: WritingTemplate): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:initialize', folderPath, template),
   writingEnsureGit: (folderPath: string): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:ensure-git', folderPath),
   writingRead: (folderPath: string, relativePath: string): Promise<string> => ipcRenderer.invoke('writing:read', folderPath, relativePath),

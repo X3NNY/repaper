@@ -137,8 +137,8 @@ export async function overviewContext(root: string, project?: OverviewProject): 
         fileFingerprints[path] = hash(content)
         add(`manuscript-file:${hash(path).slice(0, 20)}`, 'manuscript', path, '', '', content, content.slice(0, 4000), { type: 'writing', path }, true)
       }
-      const text = await writer.readSource(root, 'manuscript.tex').catch(() => '')
-      if (text) add('manuscript:current', 'manuscript', '当前工作稿', '', '', { text, fileFingerprints }, text.slice(0, 4000), { type: 'writing', path: 'manuscript.tex' }, true)
+      const text = await writer.readSource(root, workspace.mainFile).catch(() => '')
+      if (text) add('manuscript:current', 'manuscript', '当前工作稿', '', '', { text, mainFile: workspace.mainFile, fileFingerprints }, text.slice(0, 4000), { type: 'writing', path: workspace.mainFile }, true)
       if (workspace.gitReady) for (const entry of await writer.history(root)) add(`manuscript:${entry.hash}`, 'manuscript', entry.message, entry.committedAt, entry.committedAt, entry,
         `${entry.files} 个文件 · +${entry.additions} / -${entry.deletions}\n${entry.hash}`, { type: 'writing', commit: entry.hash }, true)
     }

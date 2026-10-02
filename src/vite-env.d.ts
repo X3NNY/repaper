@@ -3,7 +3,7 @@
 import type { Submission as LegacySubmission, WorkspaceData } from '../shared/model'
 import type { CodexThreadPage } from '../shared/codex'
 import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../shared/sessions'
-import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace } from '../shared/writing'
+import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHistoryEntry, WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingTemplateDraft, WritingTemplateImport, WritingTemplateLibrary, WritingWorkspace } from '../shared/writing'
 import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
@@ -33,6 +33,13 @@ declare global {
       sessionTerminalClose: (terminalId: string) => Promise<void>
       onSessionTerminalEvent: (callback: (event: SessionTerminalEvent) => void) => () => void
       writingGet: (folderPath: string) => Promise<WritingWorkspace>
+      writingTemplatesList: () => Promise<WritingTemplateLibrary>
+      writingTemplateImportChoose: (kind: 'folder' | 'file') => Promise<WritingTemplateImport | null>
+      writingTemplateImportSave: (token: string, draft: WritingTemplateDraft) => Promise<WritingTemplateLibrary>
+      writingTemplateImportCancel: (token: string) => Promise<void>
+      writingTemplateUpdate: (id: WritingTemplate, draft: WritingTemplateDraft) => Promise<WritingTemplateLibrary>
+      writingTemplateRemove: (id: WritingTemplate) => Promise<WritingTemplateLibrary>
+      writingTemplateSetDefault: (id: WritingTemplate | '') => Promise<WritingTemplateLibrary>
       writingInitialize: (folderPath: string, template: WritingTemplate) => Promise<WritingWorkspace>
       writingEnsureGit: (folderPath: string) => Promise<WritingWorkspace>
       writingRead: (folderPath: string, relativePath: string) => Promise<string>

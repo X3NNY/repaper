@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom'
 import {
   Check, ChevronDown, ChevronRight, CircleAlert, Code2, FilePlus2,
   FileText, Folder, FolderOpen, GitCompareArrows, GitCommitHorizontal, LoaderCircle, PanelLeftClose,
-  PanelLeftOpen, Play, RefreshCw, X
+  PanelLeftOpen, Play, RefreshCw, Settings2, X
 } from 'lucide-react'
 import type {
   LatexEngine, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
   WritingReviewFile, WritingTemplate, WritingWorkspace
 } from '../../shared/writing'
+import { builtinWritingTemplates, type WritingTemplateInfo } from '../../shared/writing'
 import SelectField from './SelectField'
 import type { OverviewFocus } from '../../shared/overview'
 
@@ -18,6 +19,7 @@ const PdfPreview = lazy(() => import('./PdfPreview'))
 interface Props {
   folderPath?: string
   onChooseFolder: () => void
+  onManageTemplates: () => void
   toolbarTarget: HTMLDivElement | null
   focusSource?: OverviewFocus | null
 }
@@ -83,13 +85,16 @@ function ReviewFileList({ changes, selected, onSelect }: { changes: WritingChang
   </button>)}</div>
 }
 
-export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget, focusSource }: Props) {
+export default function WritingPanel({ folderPath, onChooseFolder, onManageTemplates, toolbarTarget, focusSource }: Props) {
   const api = window.paperApi
   const [workspace, setWorkspace] = useState<WritingWorkspace | null>(null)
   const [loading, setLoading] = useState(true)
   const sourceRequest = useRef<number | null>(null)
   const [error, setError] = useState('')
   const [template, setTemplate] = useState<WritingTemplate | ''>('')
+  const [templates, setTemplates] = useState<WritingTemplateInfo[]>(builtinWritingTemplates)
+  const [templatesLoading, setTemplatesLoading] = useState(true)
+  const [templateError, setTemplateError] = useState('')
   const [initializing, setInitializing] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [jumpTarget, setJumpTarget] = useState<{ path: string; line: number; column: number; requestId: number } | null>(null)
@@ -263,6 +268,27 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
   }, [api, folderPath, loadFile])
 
   useEffect(() => {
+    let active = true
+    let firstLoad = true
+    setTemplatesLoading(true); setTemplate(''); setTemplateError('')
+    const refreshTemplates = async () => {
+      if (typeof api?.writingTemplatesList !== 'function') { setTemplatesLoading(false); return }
+      try {
+        const library = await api.writingTemplatesList()
+        if (!active) return
+        setTemplates(library.templates)
+        if (firstLoad) { setTemplate(library.defaultTemplate); firstLoad = false }
+        else setTemplate(previous => !previous || library.templates.some(item => item.id === previous) ? previous : library.defaultTemplate)
+        setTemplateError('')
+      } catch (reason) { if (active) setTemplateError(reason instanceof Error ? reason.message : '无法读取模板库。') }
+      finally { if (active) setTemplatesLoading(false) }
+    }
+    void refreshTemplates()
+    window.addEventListener('focus', refreshTemplates)
+    return () => { active = false; window.removeEventListener('focus', refreshTemplates) }
+  }, [api, folderPath])
+
+  useEffect(() => {
     if (!api || !folderPath) { setLoading(false); return }
     let active = true
     setLoading(true)
@@ -284,12 +310,13 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
         if (!active) return
         setWorkspace(state)
         if (state.initialized) {
-          const first = firstEditable(state.files)
+          const first = hasFile(state.files, state.mainFile) ? state.mainFile : firstEditable(state.files)
           if (first) {
             const text = await api.writingRead(folderPath, first)
             if (!active) return
             documentRef.current = { path: first, text, savedText: text }
             setSelectedPath(first)
+            setExpanded(new Set(first.split('/').slice(0, -1).map((_part, index, parts) => parts.slice(0, index + 1).join('/'))))
             setContent(text)
           }
           const [commits, pdf, log] = await Promise.allSettled([
@@ -375,7 +402,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
     const target = focusSource.target
     void (async () => {
       if (target.commit) { await startReview(target.commit); return }
-      const path = target.path || 'manuscript.tex'
+      const path = target.path || workspace?.mainFile || 'manuscript.tex'
       if (!hasFile(workspace.files, path)) { setError('概况引用的文稿文件已不存在：' + path); return }
       await loadFile(path)
       if (target.line && documentRef.current.path === path) setJumpTarget({ path, line: target.line, column: 1, requestId: ++jumpRequestRef.current })
@@ -429,7 +456,9 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
     try {
       const state = await api.writingInitialize(folderPath, template)
       setWorkspace(state)
-      await loadFile('manuscript.tex')
+      const mainFile = state.mainFile || 'manuscript.tex'
+      setExpanded(new Set(mainFile.split('/').slice(0, -1).map((_part, index, parts) => parts.slice(0, index + 1).join('/'))))
+      await loadFile(mainFile)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法创建写作目录。')
     } finally {
@@ -550,10 +579,11 @@ export default function WritingPanel({ folderPath, onChooseFolder, toolbarTarget
     <h2>开始写作</h2>
     <p>在论文文件夹中创建 .paper/，并初始化独立的 Git 版本记录。</p>
     <div className="writing-setup-actions">
-      <div className="writing-template-select"><SelectField value={template} onChange={(value) => setTemplate(value as WritingTemplate | '')} ariaLabel="选择写作模板" options={[{ value: '', label: '选择模板' }, { value: 'ieee-single', label: 'IEEE 单栏' }, { value: 'ieee-double', label: 'IEEE 双栏' }, { value: 'blank', label: '空模板' }]} /></div>
-      <button className="button button-primary" onClick={() => void initialize()} disabled={!template || initializing}>{initializing ? <LoaderCircle size={16} className="spin" /> : <ChevronRight size={16} />} 创建写作目录</button>
+      <div className="writing-template-select"><SelectField value={template} disabled={templatesLoading || initializing} onChange={(value) => setTemplate(value as WritingTemplate | '')} ariaLabel="选择写作模板" options={[{ value: '', label: templatesLoading ? '正在读取模板…' : '选择模板' }, ...templates.map(item => ({ value: item.id, label: item.name }))]} /></div>
+      <button className="button button-primary" onClick={() => void initialize()} disabled={!template || initializing || templatesLoading}>{initializing ? <LoaderCircle size={16} className="spin" /> : <ChevronRight size={16} />} 创建写作目录</button>
     </div>
-    {error ? <div className="writing-setup-error"><CircleAlert size={16} />{error}</div> : null}
+    <button type="button" className="link-button writing-templates-manage" onClick={onManageTemplates}><Settings2 size={14} />管理全局模板</button>
+    {templateError || error ? <div className="writing-setup-error"><CircleAlert size={16} />{templateError || error}</div> : null}
   </section>
 
   const selectedIsTex = selectedPath?.toLowerCase().endsWith('.tex') === true

@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { copyFile, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type {
-  LatexEngine, WritingChange, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
-  WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingWorkspace
+  BuiltinWritingTemplate, LatexEngine, WritingChange, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
+  WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingTemplateInfo, WritingWorkspace
 } from '../../shared/writing'
 
 const execFileAsync = promisify(execFile)
@@ -17,6 +17,17 @@ const importIgnoredDirectories = new Set(['.git', '.paper', '.repaper', '.build'
 const maxTextBytes = 5 * 1024 * 1024
 const maxPdfBytes = 50 * 1024 * 1024
 const maxLogBytes = 256 * 1024
+const writingConfigFile = '.repaper-writing.json'
+
+async function mainFileFor(root: string): Promise<string> {
+  const config = await statOrNull(join(root, writingConfigFile))
+  if (!config) return 'manuscript.tex'
+  if (!config.isFile() || config.isSymbolicLink() || config.size > 4096) throw new Error('写作主文件配置无效。')
+  const data = JSON.parse(await readFile(join(root, writingConfigFile), 'utf8')) as { schemaVersion?: number; mainFile?: unknown }
+  if (data.schemaVersion !== 1 || typeof data.mainFile !== 'string' || extname(data.mainFile).toLowerCase() !== '.tex') throw new Error('写作主文件配置无效。')
+  if (!reviewablePath(data.mainFile)) throw new Error('写作主文件配置无效。')
+  return data.mainFile
+}
 
 async function statOrNull(path: string) {
   try { return await lstat(path) }
@@ -73,7 +84,7 @@ async function listTree(root: string, directory = root, prefix = '', depth = 0, 
   const files: WritingFile[] = []
   for (const entry of entries) {
     if (limit.count >= 600) break
-    if (entry.name === '.git' || entry.name === '.build' || entry.isSymbolicLink()) continue
+    if (entry.name === '.git' || entry.name === '.build' || entry.name === writingConfigFile || entry.isSymbolicLink()) continue
     const path = prefix ? `${prefix}/${entry.name}` : entry.name
     if (entry.isDirectory()) {
       limit.count += 1
@@ -86,7 +97,7 @@ async function listTree(root: string, directory = root, prefix = '', depth = 0, 
   return files
 }
 
-function templateFiles(template: WritingTemplate): Record<string, string> {
+function templateFiles(template: BuiltinWritingTemplate): Record<string, string> {
   if (template === 'blank') return {
     'manuscript.tex': String.raw`\documentclass{article}
 
@@ -128,10 +139,10 @@ Start writing here.
   }
 }
 
-async function command(executable: string, args: string[], cwd: string, timeout = 120_000): Promise<string> {
+async function command(executable: string, args: string[], cwd: string, timeout = 120_000, env?: NodeJS.ProcessEnv): Promise<string> {
   try {
     const result = await execFileAsync(executable, args, {
-      cwd, windowsHide: true, timeout, maxBuffer: 8 * 1024 * 1024,
+      cwd, env, windowsHide: true, timeout, maxBuffer: 8 * 1024 * 1024,
       encoding: 'utf8'
     })
     return `${result.stdout ?? ''}${result.stderr ?? ''}`
@@ -200,7 +211,7 @@ async function allSourcePaths(root: string, directory = root, prefix = ''): Prom
   const entries = await readdir(directory, { withFileTypes: true })
   const paths: string[] = []
   for (const entry of entries) {
-    if (entry.name === '.git' || entry.name === '.build' || entry.isSymbolicLink()) continue
+    if (entry.name === '.git' || entry.name === '.build' || entry.name === writingConfigFile || entry.isSymbolicLink()) continue
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name
     if (entry.isDirectory()) paths.push(...await allSourcePaths(root, join(directory, entry.name), relative))
     else if (entry.isFile()) paths.push(relative)
@@ -208,10 +219,10 @@ async function allSourcePaths(root: string, directory = root, prefix = ''): Prom
   return paths
 }
 
-async function dependencyState(root: string, engine: LatexEngine): Promise<{ fingerprint: string; hasBib: boolean }> {
+async function dependencyState(root: string, engine: LatexEngine, mainFile: string): Promise<{ fingerprint: string; hasBib: boolean }> {
   const paths = await allSourcePaths(root)
   paths.sort()
-  const hash = createHash('sha256').update(engine)
+  const hash = createHash('sha256').update(engine).update(mainFile)
   let hasBib = false
   for (const relative of paths) {
     const extension = extname(relative).toLowerCase()
@@ -232,23 +243,37 @@ async function dependencyState(root: string, engine: LatexEngine): Promise<{ fin
 
 export class WritingWorkspaceManager {
   private saves = new Map<string, Promise<void>>()
+  private initializations = new Set<string>()
   private compiles = new Map<string, Promise<WritingCompileResult>>()
 
   async getState(folderPath: string): Promise<WritingWorkspace> {
     const rootPath = rootFor(folderPath)
     const root = await existingRoot(folderPath)
-    if (!root) return { initialized: false, rootPath, gitReady: false, files: [], pdfAvailable: false }
+    if (!root) return { initialized: false, rootPath, mainFile: 'manuscript.tex', gitReady: false, files: [], pdfAvailable: false }
     const files = await listTree(root)
     return {
       initialized: files.length > 0,
       rootPath,
+      mainFile: await mainFileFor(root),
       gitReady: await hasGit(root),
       files,
       pdfAvailable: (await statOrNull(join(root, '.build', 'manuscript.pdf')))?.isFile() === true
     }
   }
 
+  private async initializing<T>(folderPath: string, action: () => Promise<T>): Promise<T> {
+    const root = rootFor(await realpath(folderPath))
+    if (this.initializations.has(root)) throw new Error('写作目录正在创建，请稍后重试。')
+    this.initializations.add(root)
+    try { return await action() }
+    finally { this.initializations.delete(root) }
+  }
+
   async initialize(folderPath: string, template: WritingTemplate): Promise<WritingWorkspace> {
+    return this.initializing(folderPath, () => this.initializeNow(folderPath, template))
+  }
+
+  private async initializeNow(folderPath: string, template: WritingTemplate): Promise<WritingWorkspace> {
     if (template !== 'blank' && template !== 'ieee-single' && template !== 'ieee-double') throw new Error('未知的写作模板。')
     await command('git', ['--version'], folderPath, 10_000)
     const root = rootFor(folderPath)
@@ -260,6 +285,60 @@ export class WritingWorkspaceManager {
       await writeFile(join(root, name), content, { encoding: 'utf8', flag: 'wx' })
     }
     return this.getState(folderPath)
+  }
+
+  async initializeTemplate(folderPath: string, templateRoot: string, template: WritingTemplateInfo): Promise<WritingWorkspace> {
+    return this.initializing(folderPath, async () => {
+      const project = await realpath(folderPath)
+      const root = rootFor(project)
+      const existing = await existingRoot(project)
+      if (existing && (await readdir(root)).length) throw new Error('写作目录已有内容，请直接使用或先手动整理。')
+      const sourceInfo = await lstat(templateRoot)
+      if (!sourceInfo.isDirectory() || sourceInfo.isSymbolicLink()) throw new Error('模板文件夹已不存在。')
+      await sourcePath(templateRoot, template.mainFile)
+      await command('git', ['--version'], project, 10_000)
+      const stage = await mkdtemp(join(project, '.repaper-template-'))
+      try {
+        let count = 0
+        let totalBytes = 0
+        const copy = async (folder: string, prefix = '', depth = 0): Promise<void> => {
+          if (depth > 12) throw new Error('模板文件夹层级过深。')
+          for (const entry of await readdir(folder, { withFileTypes: true })) {
+            const path = prefix ? prefix + '/' + entry.name : entry.name
+            if (entry.isSymbolicLink()) throw new Error('模板文件夹包含链接：' + path)
+            if (entry.isDirectory()) {
+              await mkdir(join(stage, path))
+              await copy(join(folder, entry.name), path, depth + 1)
+            } else if (entry.isFile()) {
+              const origin = await sourcePath(templateRoot, path)
+              const info = await stat(origin)
+              totalBytes += info.size; count += 1
+              if (count > 2000 || info.size > 50 * 1024 * 1024 || totalBytes > 250 * 1024 * 1024) throw new Error('模板文件过大。')
+              await copyFile(origin, join(stage, path), constants.COPYFILE_EXCL)
+            }
+          }
+        }
+        await copy(templateRoot)
+        let mainFile = template.mainFile
+        const extension = extname(mainFile).toLowerCase()
+        if (extension === '.cls' || extension === '.sty') {
+          const stem = basename(mainFile, extname(mainFile))
+          if (!/^[\p{L}\p{N}_.-]+$/u.test(stem)) throw new Error('文档类或样式文件名含有不支持的字符，请使用 .tex 主文件。')
+          mainFile = join(dirname(mainFile), 'manuscript.tex').replace(/\\/g, '/')
+          const lines = [extension === '.cls' ? '\\documentclass{' + stem + '}' : '\\documentclass{article}', ...(extension === '.sty' ? ['\\usepackage{' + stem + '}'] : []), '', '\\begin{document}', '\\null', '', '\\end{document}', '']
+          await writeFile(join(stage, mainFile), lines.join('\n'), { encoding: 'utf8', flag: 'wx' })
+        }
+        await writeFile(join(stage, writingConfigFile), JSON.stringify({ schemaVersion: 1, mainFile, templateId: template.id, templateName: template.name }, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' })
+        await initGit(stage)
+        if (dirname(resolve(stage)) !== project || dirname(resolve(root)) !== project || basename(root) !== '.paper') throw new Error('写作目录路径无效。')
+        if (existing) await rmdir(root)
+        await rename(stage, root)
+        return await this.getState(folderPath)
+      } finally {
+        if (dirname(resolve(stage)) !== project || !basename(stage).startsWith('.repaper-template-')) throw new Error('模板暂存路径无效。')
+        await rm(stage, { recursive: true, force: true })
+      }
+    })
   }
 
   async importSource(folderPath: string, mainFile: string): Promise<WritingWorkspace> {
@@ -374,6 +453,7 @@ export class WritingWorkspaceManager {
     }
     const root = await requireRoot(folderPath)
     const build = join(root, '.build')
+    const sourceDirectory = dirname(await sourcePath(root, await mainFileFor(root)))
     if (!(await statOrNull(build))?.isDirectory()) throw new Error('PDF 构建目录不存在，请先编译。')
     const pdf = await statOrNull(join(build, 'manuscript.pdf'))
     const sync = await statOrNull(join(build, 'manuscript.synctex.gz')) ?? await statOrNull(join(build, 'manuscript.synctex'))
@@ -409,7 +489,7 @@ export class WritingWorkspaceManager {
     }
     if (input && Number.isInteger(line) && line > 0) results.push({ input, line, column })
     for (const result of results) {
-      const targets = isAbsolute(result.input) ? [result.input] : [resolve(root, result.input), resolve(build, result.input)]
+      const targets = isAbsolute(result.input) ? [result.input] : [resolve(sourceDirectory, result.input), resolve(root, result.input), resolve(build, result.input)]
       for (const target of targets) {
         const path = relative(root, target).replace(/\\/g, '/')
         if (extname(path).toLowerCase() !== '.tex') continue
@@ -447,19 +527,22 @@ export class WritingWorkspaceManager {
     const logs: string[] = []
     let mode: 'quick' | 'full' = 'full'
     try {
-      await sourcePath(root, 'manuscript.tex')
+      const mainFile = await mainFileFor(root)
+      const sourceDirectory = dirname(await sourcePath(root, mainFile))
       await mkdir(join(root, '.build'), { recursive: true })
-      const dependency = await dependencyState(root, engine)
+      const dependency = await dependencyState(root, engine, mainFile)
+      const env = { ...process.env }
+      for (const key of ['TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS']) env[key] = ['.', root.replace(/\\/g, '/') + '//', process.env[key] ?? ''].join(delimiter)
       const previous = await readFile(join(root, '.build', 'compile-state.json'), 'utf8').then((value) => JSON.parse(value) as { fingerprint?: string; hasBib?: boolean }).catch(() => null)
       const pdfExists = (await statOrNull(join(root, '.build', 'manuscript.pdf')))?.isFile() === true
       mode = pdfExists && previous?.fingerprint === dependency.fingerprint && previous.hasBib === dependency.hasBib ? 'quick' : 'full'
-      const latexArgs = ['-interaction=nonstopmode', '-halt-on-error', '-file-line-error', '-synctex=1', '-output-directory=.build', 'manuscript.tex']
-      const runLatex = async () => { steps.push(engine); logs.push(await command(engine, latexArgs, root)) }
+      const latexArgs = ['-interaction=nonstopmode', '-halt-on-error', '-file-line-error', '-synctex=1', '-jobname=manuscript', '-output-directory=' + join(root, '.build'), '"./' + basename(mainFile) + '"']
+      const runLatex = async () => { steps.push(engine); logs.push(await command(engine, latexArgs, sourceDirectory, 120_000, env)) }
       await runLatex()
       if (mode === 'full') {
         if (dependency.hasBib) {
           steps.push('bibtex')
-          logs.push(await command('bibtex', ['.build/manuscript'], root))
+          logs.push(await command('bibtex', [join(root, '.build', 'manuscript')], sourceDirectory, 120_000, env))
         }
         await runLatex()
         if (dependency.hasBib) await runLatex()

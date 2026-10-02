@@ -4,6 +4,7 @@ import { Check, CircleAlert, LoaderCircle, RefreshCw, Settings2, ShieldCheck, Te
 import type { SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 import type { AgentPermissionMode, SessionProvider } from '../../shared/sessions'
 import SelectField from './SelectField'
+import WritingTemplatesSettings from './WritingTemplatesSettings'
 
 const providers: { id: SkillProvider; title: string; initial: string }[] = [
   { id: 'codex', title: 'Codex', initial: 'C' },
@@ -55,7 +56,7 @@ export default function SettingsPanel({ toolbarTarget, defaultAgent, onDefaultAg
   return <>
     {toolbarTarget ? createPortal(<button className="button button-light" onClick={() => void refresh()} disabled={loading || installing !== null}><RefreshCw size={15} className={loading ? 'spin' : ''} />重新检测</button>, toolbarTarget) : null}
     <div className="global-settings">
-    <header className="global-settings-heading"><span className="eyebrow">WORKSPACE SETTINGS</span><h1>设置</h1><p>这里的 Agent 配置对所有论文项目生效。</p></header>
+    <header className="global-settings-heading"><span className="eyebrow">WORKSPACE SETTINGS</span><h1>设置</h1><p>这里的 Agent 与写作模板配置对所有论文项目生效。</p></header>
     <section className="global-settings-section agent-settings-panel" aria-label="Agent 设置">
       <div className="agent-settings-row">
         <div className="global-settings-section-icon"><TerminalSquare size={19} /></div>
@@ -68,6 +69,7 @@ export default function SettingsPanel({ toolbarTarget, defaultAgent, onDefaultAg
         <div className="agent-settings-select"><SelectField id="agent-permission" value={permissionMode} onChange={(value) => onPermissionModeChange(value as AgentPermissionMode)} options={[{ value: 'auto_approve', label: '自动审批' }, { value: 'full_access', label: '完全访问' }]} /></div>
       </div>
     </section>
+    <WritingTemplatesSettings />
     <section className="global-settings-section">
       <div className="global-settings-section-head"><div><div className="global-settings-section-icon"><Settings2 size={20} /></div><h2>研究工作流 SKILL</h2><p>让 Codex 和 Claude Code 接入研究目录，维护实验记录，并整理投稿与审稿材料。</p></div></div>
       {error ? <div className="global-settings-error"><CircleAlert size={15} />{error}</div> : null}

@@ -4,7 +4,7 @@ import { readFile, mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import { watch, type FSWatcher } from 'node:fs'
 import { extname, isAbsolute, join, resolve } from 'node:path'
 import { emptyWorkspace, isWorkspaceData, normalizeWorkspaceData, type Submission as LegacySubmission, type WorkspaceData } from '../../shared/model'
-import type { LatexEngine, WritingTemplate } from '../../shared/writing'
+import type { LatexEngine, WritingTemplate, WritingTemplateDraft } from '../../shared/writing'
 import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../../shared/submissions'
 import type { SubmissionAgentLaunch } from '../../shared/submissions'
 import type { AgentPermissionMode, SessionProvider } from '../../shared/sessions'
@@ -12,6 +12,7 @@ import { CodexBridge } from './codexBridge'
 import { ClaudeSessions } from './claudeSessions'
 import { SessionTerminalManager } from './sessionTerminal'
 import { WritingWorkspaceManager } from './writing'
+import { WritingTemplateManager } from './writingTemplates'
 import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog, setExperimentImportance } from './experiments'
 import { adoptLegacySubmission, deleteSubmission, deleteSubmissionEvent, linkSubmissionAgent, loadSubmissions, markSubmissionAgentSent, saveSubmission, saveSubmissionEvent, submissionAgentDeliveryIds, submissionSourcePath } from './submissions'
 import { ensureCliLauncher, ensureSubmissionSkill, installSkill, skillStatuses } from './skillInstaller'
@@ -27,6 +28,7 @@ const claude = new ClaudeSessions()
 const terminals = new SessionTerminalManager(codex, claude, (event) =>
   mainWindow?.webContents.send('session:terminal:event', event))
 const writing = new WritingWorkspaceManager()
+const writingTemplates = new WritingTemplateManager(() => join(app.getPath('userData'), 'writing-templates'))
 const overviewAgent = new OverviewAgentManager(terminals, codex, claude)
 const overviewWatchers = new Map<string, Map<string, FSWatcher>>()
 const overviewTimers = new Map<string, NodeJS.Timeout>()
@@ -360,7 +362,22 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:terminal:close', (_event, terminalId: string) => terminals.close(terminalId))
   ipcMain.handle('writing:get', async (_event, folderPath: string) => writing.getState(await requireFolder(folderPath)))
   ipcMain.handle('writing:initialize', async (_event, folderPath: string, template: WritingTemplate) =>
-    writing.initialize(await requireFolder(folderPath), template))
+    writingTemplates.initializeWriting(await requireFolder(folderPath), template, writing))
+  ipcMain.handle('writing:templates:list', () => writingTemplates.list())
+  ipcMain.handle('writing:templates:import:choose', async (_event, kind: 'folder' | 'file') => {
+    if (kind !== 'folder' && kind !== 'file') throw new Error('请选择模板导入方式。')
+    const options = kind === 'folder'
+      ? { title: '导入写作模板文件夹', properties: ['openDirectory' as const] }
+      : { title: '导入写作模板文件或压缩包', properties: ['openFile' as const], filters: [{ name: 'LaTeX 模板与压缩包', extensions: ['tex', 'cls', 'sty', 'zip', 'tar', 'gz', 'tgz'] }] }
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return writingTemplates.beginImport(result.filePaths[0])
+  })
+  ipcMain.handle('writing:templates:import:save', (_event, token: string, draft: WritingTemplateDraft) => writingTemplates.finishImport(token, draft))
+  ipcMain.handle('writing:templates:import:cancel', (_event, token: string) => writingTemplates.cancelImport(token))
+  ipcMain.handle('writing:templates:update', (_event, id: WritingTemplate, draft: WritingTemplateDraft) => writingTemplates.update(id, draft))
+  ipcMain.handle('writing:templates:remove', (_event, id: WritingTemplate) => writingTemplates.remove(id))
+  ipcMain.handle('writing:templates:default', (_event, id: WritingTemplate | '') => writingTemplates.setDefault(id))
   ipcMain.handle('writing:ensure-git', async (_event, folderPath: string) => writing.ensureGit(await requireFolder(folderPath)))
   ipcMain.handle('writing:read', async (_event, folderPath: string, relativePath: string) =>
     writing.readSource(await requireFolder(folderPath), relativePath))

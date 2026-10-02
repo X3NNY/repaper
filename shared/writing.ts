@@ -1,4 +1,48 @@
-export type WritingTemplate = 'ieee-single' | 'ieee-double' | 'blank'
+export type BuiltinWritingTemplate = 'ieee-single' | 'ieee-double' | 'blank'
+export type WritingTemplate = BuiltinWritingTemplate | `custom:${string}`
+export type WritingTemplateSource = 'builtin' | 'folder' | 'file' | 'archive'
+
+export interface WritingTemplateInfo {
+  id: WritingTemplate
+  name: string
+  description: string
+  builtin: boolean
+  mainFile: string
+  candidates: string[]
+  fileCount: number
+  totalBytes: number
+  sourceKind: WritingTemplateSource
+  sourceName: string
+  createdAt: string
+}
+
+export interface WritingTemplateLibrary {
+  templates: WritingTemplateInfo[]
+  defaultTemplate: WritingTemplate | ''
+}
+
+export interface WritingTemplateImport {
+  token: string
+  name: string
+  sourceName: string
+  sourceKind: Exclude<WritingTemplateSource, 'builtin'>
+  candidates: string[]
+  mainFile: string
+  fileCount: number
+  totalBytes: number
+}
+
+export interface WritingTemplateDraft {
+  name: string
+  description: string
+  mainFile: string
+}
+
+export const builtinWritingTemplates: WritingTemplateInfo[] = [
+  { id: 'ieee-single', name: 'IEEE 单栏', description: 'IEEEtran 单栏草稿', fileCount: 2 },
+  { id: 'ieee-double', name: 'IEEE 双栏', description: 'IEEEtran 期刊双栏', fileCount: 2 },
+  { id: 'blank', name: '空模板', description: '空白 article 文稿', fileCount: 1 }
+].map(item => ({ ...item, id: item.id as BuiltinWritingTemplate, builtin: true, mainFile: 'manuscript.tex', candidates: ['manuscript.tex'], totalBytes: 0, sourceKind: 'builtin' as const, sourceName: '', createdAt: '' }))
 export type LatexEngine = 'pdflatex' | 'xelatex'
 
 export interface WritingFile {
@@ -11,6 +55,7 @@ export interface WritingFile {
 export interface WritingWorkspace {
   initialized: boolean
   rootPath: string
+  mainFile: string
   gitReady: boolean
   files: WritingFile[]
   pdfAvailable: boolean
