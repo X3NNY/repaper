@@ -6,6 +6,7 @@ import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHi
 import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
+import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../../shared/writing'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -51,6 +52,9 @@ const paperApi = {
   writingTemplateUpdate: (id: WritingTemplate, draft: WritingTemplateDraft): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:update', id, draft),
   writingTemplateRemove: (id: WritingTemplate): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:remove', id),
   writingTemplateSetDefault: (id: WritingTemplate | ''): Promise<WritingTemplateLibrary> => ipcRenderer.invoke('writing:templates:default', id),
+  writingTemplateSwitchPreview: (folderPath: string, template: WritingTemplate): Promise<WritingTemplateSwitchPreview> => ipcRenderer.invoke('writing:template-switch:preview', folderPath, template),
+  writingTemplateSwitchApply: (folderPath: string, token: string): Promise<WritingTemplateSwitchResult> => ipcRenderer.invoke('writing:template-switch:apply', folderPath, token),
+  writingTemplateSwitchCancel: (folderPath: string, token: string): Promise<void> => ipcRenderer.invoke('writing:template-switch:cancel', folderPath, token),
   writingInitialize: (folderPath: string, template: WritingTemplate): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:initialize', folderPath, template),
   writingEnsureGit: (folderPath: string): Promise<WritingWorkspace> => ipcRenderer.invoke('writing:ensure-git', folderPath),
   writingRead: (folderPath: string, relativePath: string): Promise<string> => ipcRenderer.invoke('writing:read', folderPath, relativePath),

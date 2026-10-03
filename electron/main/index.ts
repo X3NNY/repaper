@@ -378,6 +378,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('writing:templates:update', (_event, id: WritingTemplate, draft: WritingTemplateDraft) => writingTemplates.update(id, draft))
   ipcMain.handle('writing:templates:remove', (_event, id: WritingTemplate) => writingTemplates.remove(id))
   ipcMain.handle('writing:templates:default', (_event, id: WritingTemplate | '') => writingTemplates.setDefault(id))
+  ipcMain.handle('writing:template-switch:preview', async (_event, folderPath: string, template: WritingTemplate) =>
+    writingTemplates.previewSwitch(await requireFolder(folderPath), template, writing))
+  ipcMain.handle('writing:template-switch:apply', async (_event, folderPath: string, token: string) =>
+    writing.applyTemplateSwitch(await requireFolder(folderPath), token))
+  ipcMain.handle('writing:template-switch:cancel', async (_event, folderPath: string, token: string) =>
+    writing.cancelTemplateSwitch(await requireFolder(folderPath), token))
   ipcMain.handle('writing:ensure-git', async (_event, folderPath: string) => writing.ensureGit(await requireFolder(folderPath)))
   ipcMain.handle('writing:read', async (_event, folderPath: string, relativePath: string) =>
     writing.readSource(await requireFolder(folderPath), relativePath))

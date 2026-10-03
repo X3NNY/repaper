@@ -105,3 +105,26 @@ export interface WritingReviewFile {
   current: string
   binary: boolean
 }
+
+export interface WritingTemplateSwitchPreview {
+  token: string
+  templateId: WritingTemplate
+  templateName: string
+  sourceMainFile: string
+  mainFile: string
+  sourceFingerprint: string
+  canApply: boolean
+  warnings: string[]
+  summary: string
+  changes: WritingChangeSummary
+  original: string
+  current: string
+}
+
+export interface WritingTemplateSwitchResult {
+  workspace: WritingWorkspace
+  originalBranch: string
+  templateBranch: string
+  originalCommit: string
+  templateCommit: string
+}

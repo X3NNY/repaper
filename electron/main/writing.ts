@@ -6,8 +6,9 @@ import { basename, delimiter, dirname, extname, isAbsolute, join, relative, reso
 import { promisify } from 'node:util'
 import type {
   BuiltinWritingTemplate, LatexEngine, WritingChange, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
-  WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingTemplateInfo, WritingWorkspace
+  WritingReviewFile, WritingSourceLocation, WritingTemplate, WritingTemplateInfo, WritingTemplateSwitchPreview, WritingTemplateSwitchResult, WritingWorkspace
 } from '../../shared/writing'
+import { WritingTemplateSwitcher } from './writingTemplateSwitch'
 
 const execFileAsync = promisify(execFile)
 const editableExtensions = new Set(['.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml'])
@@ -84,7 +85,7 @@ async function listTree(root: string, directory = root, prefix = '', depth = 0, 
   const files: WritingFile[] = []
   for (const entry of entries) {
     if (limit.count >= 600) break
-    if (entry.name === '.git' || entry.name === '.build' || entry.name === writingConfigFile || entry.isSymbolicLink()) continue
+    if (entry.name === '.git' || entry.name === '.build' || (!prefix && entry.name === '.repaper-templates') || entry.name === writingConfigFile || entry.isSymbolicLink()) continue
     const path = prefix ? `${prefix}/${entry.name}` : entry.name
     if (entry.isDirectory()) {
       limit.count += 1
@@ -230,12 +231,33 @@ async function dependencyState(root: string, engine: LatexEngine, mainFile: stri
       hash.update(relative)
       hash.update(await readFile(join(root, relative)))
     }
-    if (extension === '.tex') {
-      const source = await readFile(join(root, relative), 'utf8')
-      const uncommented = source.split(/\r?\n/).map((line) => line.replace(/(?<!\\)%.*/, '')).join('\n')
-      if (/\\bibliography\s*\{/.test(uncommented)) hasBib = true
-      const references = uncommented.match(/\\(?:cite\w*|nocite|bibliography|bibliographystyle|documentclass|usepackage|input|include|label|ref|pageref|eqref)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/g)
-      if (references?.length) hash.update(relative).update(references.join('\n'))
+  }
+  const texPaths = new Map(paths.filter(path => extname(path).toLowerCase() === '.tex').map(path => [path.replace(/\\/g, '/').toLowerCase(), path]))
+  const pending = [mainFile]
+  const visited = new Set<string>()
+  const mainDirectory = dirname(mainFile)
+  while (pending.length) {
+    const path = pending.shift()!
+    if (visited.has(path)) continue
+    visited.add(path)
+    const source = await readFile(await sourcePath(root, path), 'utf8')
+    const uncommented = source.split(/\r?\n/).map(line => line.replace(/(?<!\\)%.*/, '')).join('\n')
+    if (/\\bibliography\s*\{/.test(uncommented)) hasBib = true
+    const references = uncommented.match(/\\(?:cite\w*|nocite|bibliography|bibliographystyle|documentclass|usepackage|input|include|label|ref|pageref|eqref)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/g)
+    if (references?.length) hash.update(path).update(references.join('\n'))
+    for (const match of uncommented.matchAll(/\\(?:input|include)\s*(?:\{([^{}]+)\}|([^\s{}%]+))/g)) {
+      const name = (match[1] ?? match[2]).trim()
+      if (!name || /[\\#$]/.test(name) || isAbsolute(name)) continue
+      let found: string | undefined
+      for (const directory of [mainDirectory, dirname(path), '.']) {
+        const base = relative(root, resolve(root, directory, name)).replace(/\\/g, '/')
+        for (const candidate of [base, extname(base) ? base : base + '.tex']) {
+          const dependency = texPaths.get(candidate.toLowerCase())
+          if (dependency && reviewablePath(dependency)) { found = dependency; break }
+        }
+        if (found) break
+      }
+      if (found) pending.push(found)
     }
   }
   return { fingerprint: hash.digest('hex'), hasBib }
@@ -245,19 +267,35 @@ export class WritingWorkspaceManager {
   private saves = new Map<string, Promise<void>>()
   private initializations = new Set<string>()
   private compiles = new Map<string, Promise<WritingCompileResult>>()
+  private mutations = new Map<string, Promise<void>>()
+  private templateSwitches = new WritingTemplateSwitcher()
+
+  private async changing<T>(folderPath: string, action: () => Promise<T>): Promise<T> {
+    const root = rootFor(await realpath(folderPath))
+    const previous = this.mutations.get(root) ?? Promise.resolve()
+    const pending = previous.then(action)
+    const settled = pending.then(() => undefined, () => undefined)
+    this.mutations.set(root, settled)
+    try { return await pending }
+    finally { if (this.mutations.get(root) === settled) this.mutations.delete(root) }
+  }
 
   async getState(folderPath: string): Promise<WritingWorkspace> {
     const rootPath = rootFor(folderPath)
     const root = await existingRoot(folderPath)
     if (!root) return { initialized: false, rootPath, mainFile: 'manuscript.tex', gitReady: false, files: [], pdfAvailable: false }
     const files = await listTree(root)
+    const mainFile = await mainFileFor(root)
+    const configPath = join(root, writingConfigFile)
+    const configInfo = await statOrNull(configPath)
+    const pdfInvalidated = configInfo ? (JSON.parse(await readFile(configPath, 'utf8')) as { pdfInvalidated?: boolean }).pdfInvalidated === true : false
     return {
       initialized: files.length > 0,
       rootPath,
-      mainFile: await mainFileFor(root),
+      mainFile,
       gitReady: await hasGit(root),
       files,
-      pdfAvailable: (await statOrNull(join(root, '.build', 'manuscript.pdf')))?.isFile() === true
+      pdfAvailable: !pdfInvalidated && (await statOrNull(join(root, '.build', 'manuscript.pdf')))?.isFile() === true
     }
   }
 
@@ -265,7 +303,7 @@ export class WritingWorkspaceManager {
     const root = rootFor(await realpath(folderPath))
     if (this.initializations.has(root)) throw new Error('写作目录正在创建，请稍后重试。')
     this.initializations.add(root)
-    try { return await action() }
+    try { return await this.changing(folderPath, action) }
     finally { this.initializations.delete(root) }
   }
 
@@ -342,6 +380,10 @@ export class WritingWorkspaceManager {
   }
 
   async importSource(folderPath: string, mainFile: string): Promise<WritingWorkspace> {
+    return this.changing(folderPath, () => this.importSourceNow(folderPath, mainFile))
+  }
+
+  private async importSourceNow(folderPath: string, mainFile: string): Promise<WritingWorkspace> {
     const project = await realpath(folderPath)
     const main = await realpath(mainFile)
     const sourceRelative = relative(project, main)
@@ -405,9 +447,11 @@ export class WritingWorkspaceManager {
   }
 
   async ensureGit(folderPath: string): Promise<WritingWorkspace> {
-    const root = await requireRoot(folderPath)
-    await initGit(root)
-    return this.getState(folderPath)
+    return this.changing(folderPath, async () => {
+      const root = await requireRoot(folderPath)
+      await initGit(root)
+      return this.getState(folderPath)
+    })
   }
 
   async readSource(folderPath: string, relativePath: string): Promise<string> {
@@ -420,6 +464,10 @@ export class WritingWorkspaceManager {
   }
 
   async saveSource(folderPath: string, relativePath: string, content: string): Promise<void> {
+    return this.changing(folderPath, () => this.saveSourceNow(folderPath, relativePath, content))
+  }
+
+  private async saveSourceNow(folderPath: string, relativePath: string, content: string): Promise<void> {
     if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > maxTextBytes) throw new Error('文件内容过大。')
     const root = await requireRoot(folderPath)
     const target = await sourcePath(root, relativePath)
@@ -432,15 +480,38 @@ export class WritingWorkspaceManager {
   }
 
   async createSource(folderPath: string, relativePath: string): Promise<WritingWorkspace> {
-    const root = await requireRoot(folderPath)
-    const target = await sourcePath(root, relativePath, false)
-    if (!editableExtensions.has(extname(target).toLowerCase())) throw new Error('只能新建 TeX、BibTeX 或文本文件。')
-    await writeFile(target, '', { encoding: 'utf8', flag: 'wx' })
-    return this.getState(folderPath)
+    return this.changing(folderPath, async () => {
+      const root = await requireRoot(folderPath)
+      const target = await sourcePath(root, relativePath, false)
+      if (!editableExtensions.has(extname(target).toLowerCase())) throw new Error('只能新建 TeX、BibTeX 或文本文件。')
+      await writeFile(target, '', { encoding: 'utf8', flag: 'wx' })
+      return this.getState(folderPath)
+    })
+  }
+
+  async previewTemplateSwitch(folderPath: string, template: WritingTemplateInfo, templateRoot: string | null = null): Promise<WritingTemplateSwitchPreview> {
+    return this.changing(folderPath, async () => {
+      const root = await requireRoot(folderPath)
+      const builtin = template.builtin ? templateFiles(template.id as BuiltinWritingTemplate) : {}
+      return this.templateSwitches.preview(folderPath, await mainFileFor(root), template, templateRoot, builtin)
+    })
+  }
+
+  async applyTemplateSwitch(folderPath: string, token: string): Promise<WritingTemplateSwitchResult> {
+    return this.changing(folderPath, async () => ({ ...await this.templateSwitches.apply(folderPath, token), workspace: await this.getState(folderPath) }))
+  }
+
+  async cancelTemplateSwitch(folderPath: string, token: string): Promise<void> {
+    return this.changing(folderPath, () => this.templateSwitches.cancel(folderPath, token))
   }
 
   async readPdf(folderPath: string): Promise<Uint8Array> {
     const root = await requireRoot(folderPath)
+    await mainFileFor(root)
+    if (await statOrNull(join(root, writingConfigFile))) {
+      const config = JSON.parse(await readFile(join(root, writingConfigFile), 'utf8')) as { pdfInvalidated?: boolean }
+      if (config.pdfInvalidated === true) throw new Error('模板已切换，请重新编译后查看当前文稿的 PDF。')
+    }
     const target = join(root, '.build', 'manuscript.pdf')
     const info = await stat(target)
     if (!info.isFile() || info.size > maxPdfBytes) throw new Error('PDF 文件不存在或过大。')
@@ -516,7 +587,7 @@ export class WritingWorkspaceManager {
     const root = await requireRoot(folderPath)
     const existing = this.compiles.get(root)
     if (existing) return existing
-    const running = this.compileNow(root, engine)
+    const running = this.changing(folderPath, () => this.compileNow(root, engine))
     this.compiles.set(root, running)
     try { return await running }
     finally { if (this.compiles.get(root) === running) this.compiles.delete(root) }
@@ -539,6 +610,10 @@ export class WritingWorkspaceManager {
       const latexArgs = ['-interaction=nonstopmode', '-halt-on-error', '-file-line-error', '-synctex=1', '-jobname=manuscript', '-output-directory=' + join(root, '.build'), '"./' + basename(mainFile) + '"']
       const runLatex = async () => { steps.push(engine); logs.push(await command(engine, latexArgs, sourceDirectory, 120_000, env)) }
       await runLatex()
+      const activeAux = await readFile(join(root, '.build', 'manuscript.aux'), 'utf8').catch(() => '')
+      const actualHasBib = /\\bibdata\s*\{/.test(activeAux) || dependency.hasBib
+      if (dependency.hasBib !== actualHasBib) mode = 'full'
+      dependency.hasBib = actualHasBib
       if (mode === 'full') {
         if (dependency.hasBib) {
           steps.push('bibtex')
@@ -551,6 +626,12 @@ export class WritingWorkspaceManager {
         throw new Error('TeX 没有生成 PDF。请在文稿中加入可排版的内容后重试。')
       }
       await writeFile(join(root, '.build', 'compile-state.json'), JSON.stringify(dependency), 'utf8')
+      const configPath = join(root, writingConfigFile)
+      if (await statOrNull(configPath)) {
+        await sourcePath(root, writingConfigFile)
+        const config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+        if (config.pdfInvalidated === true) await writeFile(configPath, JSON.stringify({ ...config, pdfInvalidated: false }, null, 2) + '\n', 'utf8')
+      }
       const result = { success: true, engine, mode, steps, log: logs.join('\n').slice(-6000) } satisfies WritingCompileResult
       await this.saveCompileLog(root, result, logs)
       return result
@@ -709,6 +790,10 @@ export class WritingWorkspaceManager {
   }
 
   async commit(folderPath: string, message: string): Promise<WritingHistoryEntry> {
+    return this.changing(folderPath, () => this.commitNow(folderPath, message))
+  }
+
+  private async commitNow(folderPath: string, message: string): Promise<WritingHistoryEntry> {
     const title = typeof message === 'string' ? message.trim() : ''
     if (!title || title.length > 120 || /[\r\n]/.test(title)) throw new Error('请输入 1 至 120 字的一行版本说明。')
     const root = await requireRoot(folderPath)

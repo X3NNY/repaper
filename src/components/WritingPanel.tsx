@@ -3,14 +3,15 @@ import { createPortal } from 'react-dom'
 import {
   Check, ChevronDown, ChevronRight, CircleAlert, Code2, FilePlus2,
   FileText, Folder, FolderOpen, GitCompareArrows, GitCommitHorizontal, LoaderCircle, PanelLeftClose,
-  PanelLeftOpen, Play, RefreshCw, Settings2, X
+  PanelLeftOpen, Play, RefreshCw, Settings2, Shuffle, X
 } from 'lucide-react'
 import type {
   LatexEngine, WritingChangeSummary, WritingCompileResult, WritingFile, WritingHistoryEntry,
-  WritingReviewFile, WritingTemplate, WritingWorkspace
+  WritingReviewFile, WritingTemplate, WritingTemplateSwitchPreview, WritingTemplateSwitchResult, WritingWorkspace
 } from '../../shared/writing'
 import { builtinWritingTemplates, type WritingTemplateInfo } from '../../shared/writing'
 import SelectField from './SelectField'
+import WritingTemplateSwitchDialog, { type WritingTemplateSwitchBusy } from './WritingTemplateSwitchDialog'
 import type { OverviewFocus } from '../../shared/overview'
 
 const WritingEditor = lazy(() => import('./WritingEditor'))
@@ -95,6 +96,13 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   const [templates, setTemplates] = useState<WritingTemplateInfo[]>(builtinWritingTemplates)
   const [templatesLoading, setTemplatesLoading] = useState(true)
   const [templateError, setTemplateError] = useState('')
+  const [templateSwitchOpen, setTemplateSwitchOpen] = useState(false)
+  const [templateSwitchTemplate, setTemplateSwitchTemplate] = useState<WritingTemplate | ''>('')
+  const [templateSwitchPreview, setTemplateSwitchPreview] = useState<WritingTemplateSwitchPreview | null>(null)
+  const [templateSwitchBusy, setTemplateSwitchBusy] = useState<WritingTemplateSwitchBusy>(null)
+  const [templateSwitchError, setTemplateSwitchError] = useState('')
+  const [templateSwitchNeedsRefresh, setTemplateSwitchNeedsRefresh] = useState(false)
+  const [templateSwitchResult, setTemplateSwitchResult] = useState<(WritingTemplateSwitchResult & { templateName: string }) | null>(null)
   const [initializing, setInitializing] = useState(false)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [jumpTarget, setJumpTarget] = useState<{ path: string; line: number; column: number; requestId: number } | null>(null)
@@ -127,6 +135,8 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   const [changesError, setChangesError] = useState('')
   const [showNewFile, setShowNewFile] = useState(false)
   const [newFileName, setNewFileName] = useState('')
+  const [workspaceUpdating, setWorkspaceUpdating] = useState(false)
+  const [editorRevision, setEditorRevision] = useState(0)
   const [splitRatio, setSplitRatio] = useState(() => savedSplit(folderPath))
   const [draggingSplit, setDraggingSplit] = useState(false)
   const documentRef = useRef<OpenDocument>({ path: null, text: '', savedText: '' })
@@ -137,6 +147,32 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   const saveChainRef = useRef<Promise<void>>(Promise.resolve())
   const changesRequestRef = useRef(0)
   const jumpRequestRef = useRef(0)
+  const templateSwitchLockedRef = useRef(false)
+  const templateSwitchBusyRef = useRef<WritingTemplateSwitchBusy>(null)
+  const templateSwitchTokenRef = useRef<{ folderPath: string; token: string } | null>(null)
+  const templateSwitchReturnFocusRef = useRef<HTMLElement | null>(null)
+  const templateSwitchRequestRef = useRef(0)
+  const workspaceUpdatingRef = useRef(false)
+  const fileReadingRef = useRef(false)
+  const currentFolderRef = useRef(folderPath)
+  currentFolderRef.current = folderPath
+
+  useEffect(() => {
+    setTemplateSwitchOpen(false)
+    setTemplateSwitchPreview(null)
+    setTemplateSwitchBusy(null)
+    setTemplateSwitchResult(null)
+    templateSwitchLockedRef.current = false
+    templateSwitchBusyRef.current = null
+    return () => {
+      templateSwitchRequestRef.current += 1
+      templateSwitchLockedRef.current = false
+      templateSwitchBusyRef.current = null
+      const draft = templateSwitchTokenRef.current
+      templateSwitchTokenRef.current = null
+      if (draft && api) void api.writingTemplateSwitchCancel(draft.folderPath, draft.token).catch(() => undefined)
+    }
+  }, [api, folderPath])
 
   useEffect(() => {
     const next = savedSplit(folderPath)
@@ -191,7 +227,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   const saveCurrent = useCallback(async () => {
     if (saveTimerRef.current !== null) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
     const document = documentRef.current
-    if (!api || !folderPath || !document.path || document.text === document.savedText) return
+    if (!api || !folderPath || currentFolderRef.current !== folderPath || !document.path || document.text === document.savedText) return
     const path = document.path
     const text = document.text
     setSaveState('saving')
@@ -199,28 +235,36 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     saveChainRef.current = pending.catch(() => undefined)
     try {
       await pending
-      if (documentRef.current.path === path) {
+      if (currentFolderRef.current === folderPath && documentRef.current === document && documentRef.current.path === path) {
         documentRef.current.savedText = text
         setSaveState(documentRef.current.text === text ? 'saved' : 'dirty')
       }
     } catch (reason) {
-      setSaveState('error')
-      setError(reason instanceof Error ? reason.message : '自动保存失败。')
+      if (currentFolderRef.current === folderPath && documentRef.current === document) {
+        setSaveState('error')
+        setError(reason instanceof Error ? reason.message : '自动保存失败。')
+      }
       throw reason
     }
   }, [api, folderPath])
 
   const flushSave = useCallback(async () => {
+    if (currentFolderRef.current !== folderPath) throw new Error('写作目录已变化，请重新操作。')
     await saveCurrent()
+    if (currentFolderRef.current !== folderPath) throw new Error('写作目录已变化，请重新操作。')
     await saveChainRef.current
+    if (currentFolderRef.current !== folderPath) throw new Error('写作目录已变化，请重新操作。')
     if (documentRef.current.text !== documentRef.current.savedText) await saveCurrent()
-  }, [saveCurrent])
+    if (currentFolderRef.current !== folderPath) throw new Error('写作目录已变化，请重新操作。')
+  }, [saveCurrent, folderPath])
 
   const loadFile = useCallback(async (path: string) => {
-    if (!api || !folderPath || path === documentRef.current.path) return
-    await flushSave()
+    if (!api || !folderPath || templateSwitchLockedRef.current || fileReadingRef.current || path === documentRef.current.path) return
+    fileReadingRef.current = true
     setReading(true)
     try {
+      await flushSave()
+      if (templateSwitchLockedRef.current) return
       if (editableFile(path)) {
         const text = await api.writingRead(folderPath, path)
         documentRef.current = { path, text, savedText: text }
@@ -236,18 +280,20 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法打开文件。')
     } finally {
+      fileReadingRef.current = false
       setReading(false)
     }
   }, [api, folderPath, flushSave])
 
   const inverseSearch = useCallback(async (page: number, x: number, y: number) => {
-    if (!api || !folderPath) return
+    if (!api || !folderPath || templateSwitchLockedRef.current) return
     if (typeof api.writingInverseSearch !== 'function') {
       setError('当前窗口尚未加载 PDF 定位功能。请重启 re:paper 后再试。')
       return
     }
     try {
       const location = await api.writingInverseSearch(folderPath, page, x, y)
+      if (templateSwitchLockedRef.current) return
       if (!location) {
         setError('该位置没有对应的 TeX 源码，请尝试点击正文或重新编译。')
         return
@@ -386,9 +432,11 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   }, [api, folderPath, selectedHistory, reviewSelectedPath, reviewSummary])
 
   async function startReview(hash: string) {
+    if (templateSwitchLockedRef.current) return
     setHistoryOpen(false)
     try {
       await flushSave()
+      if (templateSwitchLockedRef.current) return
       setSelectedHistory(hash)
       setReviewRefresh((current) => current + 1)
     } catch (reason) {
@@ -397,7 +445,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   }
 
   useEffect(() => {
-    if (loading || !workspace?.initialized || !focusSource || focusSource.target.type !== 'writing' || sourceRequest.current === focusSource.requestId) return
+    if (templateSwitchOpen || loading || !workspace?.initialized || !focusSource || focusSource.target.type !== 'writing' || sourceRequest.current === focusSource.requestId) return
     sourceRequest.current = focusSource.requestId
     const target = focusSource.target
     void (async () => {
@@ -409,9 +457,10 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       const parts = path.split('/')
       setExpanded(current => { const next = new Set(current); for (let index = 1; index < parts.length; index++) next.add(parts.slice(0, index).join('/')); return next })
     })().catch(reason => setError(reason instanceof Error ? reason.message : '无法打开概况引用的版本。'))
-  }, [focusSource, loading, workspace, loadFile])
+  }, [focusSource, loading, workspace, loadFile, templateSwitchOpen])
 
   async function stopReview() {
+    if (templateSwitchLockedRef.current || fileReadingRef.current) return
     setSelectedHistory('')
     setJumpTarget(null)
     setReviewSummary(null)
@@ -419,6 +468,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     setReviewFile(null)
     setReviewError('')
     if (!api || !folderPath) return
+    fileReadingRef.current = true
     setReading(true)
     try {
       const state = await api.writingGet(folderPath)
@@ -437,11 +487,13 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法返回当前文件。')
     } finally {
+      fileReadingRef.current = false
       setReading(false)
     }
   }
 
   function changeContent(next: string) {
+    if (templateSwitchLockedRef.current) return
     documentRef.current.text = next
     setContent(next)
     setSaveState('dirty')
@@ -467,7 +519,9 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   }
 
   async function refreshFiles() {
-    if (!api || !folderPath) return
+    if (!api || !folderPath || templateSwitchLockedRef.current || workspaceUpdatingRef.current) return
+    workspaceUpdatingRef.current = true
+    setWorkspaceUpdating(true)
     try {
       await flushSave()
       const state = await api.writingGet(folderPath)
@@ -478,14 +532,19 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法刷新文件列表。')
+    } finally {
+      workspaceUpdatingRef.current = false
+      setWorkspaceUpdating(false)
     }
   }
 
   async function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!api || !folderPath) return
+    if (!api || !folderPath || templateSwitchLockedRef.current || workspaceUpdatingRef.current) return
     const name = newFileName.trim()
     if (!name) return
+    workspaceUpdatingRef.current = true
+    setWorkspaceUpdating(true)
     try {
       await flushSave()
       const state = await api.writingCreate(folderPath, name)
@@ -495,11 +554,14 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       await loadFile(name)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法新建文件。')
+    } finally {
+      workspaceUpdatingRef.current = false
+      setWorkspaceUpdating(false)
     }
   }
 
   async function compile() {
-    if (!api || !folderPath || compiling) return
+    if (!api || !folderPath || compiling || templateSwitchLockedRef.current) return
     setCompiling(true)
     setCompileResult(null)
     setError('')
@@ -521,7 +583,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   }
 
   async function refreshChanges() {
-    if (!api || !folderPath) return
+    if (!api || !folderPath || templateSwitchLockedRef.current) return
     const request = ++changesRequestRef.current
     setChangesLoading(true)
     setChangesError('')
@@ -545,6 +607,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   }
 
   function openCommitDialog() {
+    if (templateSwitchLockedRef.current) return
     setShowCommit(true)
     setChanges(null)
     setError('')
@@ -553,7 +616,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
 
   async function recordVersion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!api || !folderPath || committing || changesLoading || !changes?.totalFiles) return
+    if (!api || !folderPath || committing || changesLoading || !changes?.totalFiles || templateSwitchLockedRef.current) return
     setCommitting(true)
     setError('')
     try {
@@ -568,6 +631,164 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       setError(reason instanceof Error ? reason.message : '无法记录版本。')
     } finally {
       setCommitting(false)
+    }
+  }
+
+  async function ensureGit() {
+    if (!api || !folderPath || templateSwitchLockedRef.current || workspaceUpdatingRef.current) return
+    workspaceUpdatingRef.current = true
+    setWorkspaceUpdating(true)
+    try { setWorkspace(await api.writingEnsureGit(folderPath)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '无法初始化版本记录。') }
+    finally { workspaceUpdatingRef.current = false; setWorkspaceUpdating(false) }
+  }
+
+  async function discardTemplateSwitchPreview() {
+    const draft = templateSwitchTokenRef.current
+    templateSwitchTokenRef.current = null
+    if (draft && api) await api.writingTemplateSwitchCancel(draft.folderPath, draft.token)
+  }
+
+  function openTemplateSwitch() {
+    if (!api || !folderPath || templateSwitchLockedRef.current || fileReadingRef.current || workspaceUpdatingRef.current || compiling || committing) return
+    if (typeof api.writingTemplateSwitchPreview !== 'function') { setError('模板切换需要加载新版桌面应用接口。'); return }
+    templateSwitchReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    templateSwitchLockedRef.current = true
+    if (saveTimerRef.current !== null) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+    closeCommitDialog()
+    setShowNewFile(false)
+    setCompileOpen(false)
+    setHistoryOpen(false)
+    setTemplateSwitchTemplate(template && templates.some(item => item.id === template) ? template : '')
+    setTemplateSwitchPreview(null)
+    setTemplateSwitchError('')
+    setTemplateSwitchNeedsRefresh(false)
+    setTemplateSwitchOpen(true)
+  }
+
+  function chooseSwitchTemplate(next: WritingTemplate | '') {
+    if (templateSwitchBusyRef.current) return
+    const request = ++templateSwitchRequestRef.current
+    setTemplateSwitchTemplate(next)
+    setTemplateSwitchPreview(null)
+    setTemplateSwitchError('')
+    setTemplateSwitchNeedsRefresh(false)
+    void discardTemplateSwitchPreview().catch(reason => {
+      if (request === templateSwitchRequestRef.current && templateSwitchLockedRef.current) setTemplateSwitchError(reason instanceof Error ? reason.message : '无法清理旧预览。')
+    })
+  }
+
+  async function closeTemplateSwitch() {
+    if (templateSwitchBusyRef.current) return
+    const request = ++templateSwitchRequestRef.current
+    templateSwitchBusyRef.current = 'cancel'
+    setTemplateSwitchBusy('cancel')
+    try { await discardTemplateSwitchPreview() }
+    catch (reason) {
+      if (request === templateSwitchRequestRef.current) setError(reason instanceof Error ? reason.message : '无法清理模板预览。')
+    } finally {
+      if (request === templateSwitchRequestRef.current) {
+        templateSwitchLockedRef.current = false
+        templateSwitchBusyRef.current = null
+        setTemplateSwitchOpen(false)
+        setTemplateSwitchBusy(null)
+        setTemplateSwitchPreview(null)
+        setTemplateSwitchError('')
+        if (documentRef.current.path && documentRef.current.text !== documentRef.current.savedText) {
+          saveTimerRef.current = window.setTimeout(() => { void saveCurrent().catch(() => undefined) }, 650)
+        }
+      }
+    }
+  }
+
+  async function previewTemplateSwitch() {
+    if (!api || !folderPath || !templateSwitchTemplate || templateSwitchBusyRef.current || !templateSwitchLockedRef.current) return
+    const request = ++templateSwitchRequestRef.current
+    templateSwitchBusyRef.current = 'preview'
+    setTemplateSwitchBusy('preview')
+    setTemplateSwitchError('')
+    setTemplateSwitchNeedsRefresh(false)
+    setTemplateSwitchPreview(null)
+    try {
+      await discardTemplateSwitchPreview()
+      if (request !== templateSwitchRequestRef.current || currentFolderRef.current !== folderPath) return
+      await flushSave()
+      if (request !== templateSwitchRequestRef.current || currentFolderRef.current !== folderPath) return
+      const preview = await api.writingTemplateSwitchPreview(folderPath, templateSwitchTemplate)
+      if (request !== templateSwitchRequestRef.current || currentFolderRef.current !== folderPath) {
+        await api.writingTemplateSwitchCancel(folderPath, preview.token)
+        return
+      }
+      templateSwitchTokenRef.current = { folderPath, token: preview.token }
+      setTemplateSwitchPreview(preview)
+    } catch (reason) {
+      if (request === templateSwitchRequestRef.current) setTemplateSwitchError(reason instanceof Error ? reason.message : '无法生成模板切换预览。')
+    } finally {
+      if (request === templateSwitchRequestRef.current) { templateSwitchBusyRef.current = null; setTemplateSwitchBusy(null) }
+    }
+  }
+
+  async function applyTemplateSwitch() {
+    const preview = templateSwitchPreview
+    if (!api || !folderPath || !preview?.canApply || preview.templateId !== templateSwitchTemplate || templateSwitchNeedsRefresh || templateSwitchBusyRef.current || !templateSwitchLockedRef.current) return
+    const request = ++templateSwitchRequestRef.current
+    templateSwitchBusyRef.current = 'apply'
+    setTemplateSwitchBusy('apply')
+    setTemplateSwitchError('')
+    try {
+      const result = await api.writingTemplateSwitchApply(folderPath, preview.token)
+      if (templateSwitchTokenRef.current?.folderPath === folderPath && templateSwitchTokenRef.current.token === preview.token) templateSwitchTokenRef.current = null
+      if (request !== templateSwitchRequestRef.current || currentFolderRef.current !== folderPath) return
+      setWorkspace(result.workspace)
+      setPdfData(null)
+      setCompileLog(null)
+      setCompileResult(null)
+      setJumpTarget(null)
+      setSelectedHistory('')
+      setReviewSummary(null)
+      setReviewSelectedPath(null)
+      setReviewFile(null)
+      setReviewError('')
+      setReviewLoading(false)
+      setReviewFileLoading(false)
+      setHistory([])
+      setChanges(null)
+      setChangesError('')
+      setCommitMessage('')
+      setError('')
+      documentRef.current = { path: null, text: '', savedText: '' }
+      setSelectedPath(null)
+      setContent('')
+      setSaveState('saved')
+      const [main, commits] = await Promise.allSettled([
+        api.writingRead(folderPath, result.workspace.mainFile),
+        api.writingHistory(folderPath)
+      ])
+      if (request !== templateSwitchRequestRef.current || currentFolderRef.current !== folderPath) return
+      const loadErrors: string[] = []
+      if (main.status === 'fulfilled') {
+        const path = result.workspace.mainFile
+        documentRef.current = { path, text: main.value, savedText: main.value }
+        setSelectedPath(path)
+        setContent(main.value)
+        setExpanded(new Set(path.split('/').slice(0, -1).map((_part, index, parts) => parts.slice(0, index + 1).join('/'))))
+        setEditorRevision(current => current + 1)
+      } else loadErrors.push('新文稿读取失败')
+      if (commits.status === 'fulfilled') setHistory(commits.value)
+      else loadErrors.push('版本历史读取失败')
+      if (loadErrors.length) setError('模板已切换，' + loadErrors.join('，') + '。请刷新后重试。')
+      setTemplateSwitchResult({ ...result, templateName: preview.templateName })
+      setTemplateSwitchPreview(null)
+      setTemplateSwitchOpen(false)
+      templateSwitchLockedRef.current = false
+    } catch (reason) {
+      if (request === templateSwitchRequestRef.current) {
+        setTemplateSwitchError(reason instanceof Error ? reason.message : '模板切换失败，请刷新预览后重试。')
+        setTemplateSwitchNeedsRefresh(true)
+        await discardTemplateSwitchPreview().catch(() => undefined)
+      }
+    } finally {
+      if (request === templateSwitchRequestRef.current) { templateSwitchBusyRef.current = null; setTemplateSwitchBusy(null) }
     }
   }
 
@@ -593,24 +814,26 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
 
   return <>
     {toolbarTarget ? createPortal(<div className="writing-toolbar-actions">
+        <button className="writing-template-switch-button" type="button" onClick={openTemplateSwitch} disabled={templateSwitchOpen || compiling || committing || reading || workspaceUpdating || templatesLoading}><Shuffle size={15} />切换模板</button>
         <div className="writing-compile-group" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCompileOpen(false) }} onKeyDown={(event) => { if (event.key === 'Escape') setCompileOpen(false) }}>
-          <button className="writing-compile-run" type="button" onClick={() => void compile()} disabled={compiling}>{compiling ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}<span>{compiling ? '编译中…' : '编译'}</span><small>{engine === 'pdflatex' ? 'pdfLaTeX' : 'XeLaTeX'}</small></button>
-          <button className="writing-compile-toggle" type="button" aria-label="选择编译方式" aria-expanded={compileOpen} onClick={() => setCompileOpen((current) => !current)}><ChevronDown size={15} /></button>
+          <button className="writing-compile-run" type="button" onClick={() => void compile()} disabled={compiling || templateSwitchOpen}>{compiling ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}<span>{compiling ? '编译中…' : '编译'}</span><small>{engine === 'pdflatex' ? 'pdfLaTeX' : 'XeLaTeX'}</small></button>
+          <button className="writing-compile-toggle" type="button" aria-label="选择编译方式" aria-expanded={compileOpen} disabled={templateSwitchOpen} onClick={() => setCompileOpen((current) => !current)}><ChevronDown size={15} /></button>
           {compileOpen ? <div className="writing-compile-popover">
             {(['pdflatex', 'xelatex'] as const).map((option) => <button key={option} type="button" className={engine === option ? 'selected' : ''} onClick={() => { setEngine(option); localStorage.setItem('repaper-latex-engine', option); setCompileOpen(false) }}><span>{option === 'pdflatex' ? 'pdfLaTeX' : 'XeLaTeX'}</span>{engine === option ? <Check size={14} /> : null}</button>)}
           </div> : null}
         </div>
         <div className="writing-version-group" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setHistoryOpen(false) }} onKeyDown={(event) => { if (event.key === 'Escape') setHistoryOpen(false) }}>
-          <button className="writing-history-toggle" type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen((current) => !current)}>版本历史 · {history.length}<ChevronDown size={14} /></button>
+          <button className="writing-history-toggle" type="button" aria-expanded={historyOpen} disabled={templateSwitchOpen} onClick={() => setHistoryOpen((current) => !current)}>版本历史 · {history.length}<ChevronDown size={14} /></button>
           {historyOpen ? <div className="writing-history-popover">
             {history.length ? history.map((entry) => <button type="button" key={entry.hash} className={selectedHistory === entry.hash ? 'selected' : ''} onClick={() => void startReview(entry.hash)}><strong>{entry.message}</strong><small>{historyMeta(entry)}</small></button>) : <p>还没有记录版本。编辑后点击“记录版本”。</p>}
           </div> : null}
-          <button className="writing-record-button" type="button" onClick={openCommitDialog} disabled={!workspace.gitReady}><GitCommitHorizontal size={15} /> 记录版本</button>
+          <button className="writing-record-button" type="button" onClick={openCommitDialog} disabled={!workspace.gitReady || templateSwitchOpen}><GitCommitHorizontal size={15} /> 记录版本</button>
         </div>
     </div>, toolbarTarget) : null}
-    <section className={`writing-workspace ${treeCollapsed ? 'tree-collapsed' : ''}`}>
-    {!workspace.gitReady ? <div className="writing-banner"><CircleAlert size={16} /> 这个 .paper/ 还没有 Git 仓库。<button onClick={() => void api.writingEnsureGit(folderPath).then(setWorkspace).catch((reason) => setError(String(reason)))}>初始化版本记录</button></div> : null}
+    <section className={`writing-workspace ${treeCollapsed ? 'tree-collapsed' : ''}`} inert={templateSwitchOpen}>
+    {!workspace.gitReady ? <div className="writing-banner"><CircleAlert size={16} /> 这个 .paper/ 还没有 Git 仓库。<button disabled={workspaceUpdating || templateSwitchOpen} onClick={() => void ensureGit()}>初始化版本记录</button></div> : null}
     {error ? <div className="writing-banner error"><CircleAlert size={16} /><span>{error}</span><button onClick={() => setError('')}>关闭</button></div> : null}
+    {templateSwitchResult ? <div className="writing-template-switch-success" role="status"><Check size={16} /><div><strong>已切换至 {templateSwitchResult.templateName}</strong><small title={`${templateSwitchResult.originalBranch} → ${templateSwitchResult.templateBranch} · ${templateSwitchResult.originalCommit}`}>分支 {templateSwitchResult.originalBranch} → {templateSwitchResult.templateBranch} · 原版本 {templateSwitchResult.originalCommit.slice(0, 8)}</small></div><button type="button" onClick={() => void startReview(templateSwitchResult.originalCommit)}><GitCompareArrows size={14} />对比原版本</button><button type="button" aria-label="关闭模板切换结果" onClick={() => setTemplateSwitchResult(null)}><X size={14} /></button></div> : null}
     {compileResult ? <div className={`writing-compile-status ${compileResult.success ? 'success' : 'error'}`}>
       {compileResult.success ? <Check size={15} /> : <CircleAlert size={15} />}
       <span>{compileResult.success ? `${compileResult.mode === 'quick' ? '快速' : '完整'}编译完成 · ${compileResult.steps.join(' → ')}` : `编译失败 · ${compileResult.error || '请查看日志'}`}</span>
@@ -621,10 +844,10 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       <aside className="writing-files">
         <div className="writing-files-head">
           <button className="writing-collapse" onClick={() => setTreeCollapsed((current) => !current)} title={treeCollapsed ? '展开文件列表' : '收起文件列表'} aria-label={treeCollapsed ? '展开文件列表' : '收起文件列表'}>{treeCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
-          {!treeCollapsed ? <><strong>{selectedHistory ? `变更文件 · ${reviewSummary?.totalFiles ?? 0}` : '文件'}</strong>{!selectedHistory ? <button onClick={() => setShowNewFile((current) => !current)} title="新建文件" aria-label="新建文件"><FilePlus2 size={17} /></button> : null}<button onClick={() => selectedHistory ? setReviewRefresh((current) => current + 1) : void refreshFiles()} title={selectedHistory ? '刷新版本对比' : '刷新文件列表'} aria-label={selectedHistory ? '刷新版本对比' : '刷新文件列表'}><RefreshCw size={16} /></button></> : null}
+          {!treeCollapsed ? <><strong>{selectedHistory ? `变更文件 · ${reviewSummary?.totalFiles ?? 0}` : '文件'}</strong>{!selectedHistory ? <button disabled={templateSwitchOpen || workspaceUpdating} onClick={() => setShowNewFile((current) => !current)} title="新建文件" aria-label="新建文件"><FilePlus2 size={17} /></button> : null}<button disabled={templateSwitchOpen || workspaceUpdating} onClick={() => selectedHistory ? setReviewRefresh((current) => current + 1) : void refreshFiles()} title={selectedHistory ? '刷新版本对比' : '刷新文件列表'} aria-label={selectedHistory ? '刷新版本对比' : '刷新文件列表'}><RefreshCw size={16} /></button></> : null}
         </div>
         {!treeCollapsed ? <>
-          {!selectedHistory && showNewFile ? <form className="writing-new-file" onSubmit={(event) => void createFile(event)}><input autoFocus value={newFileName} onChange={(event) => setNewFileName(event.target.value)} placeholder="例如 intro.tex" aria-label="新文件路径" /><button type="submit" aria-label="创建文件"><Check size={16} /></button></form> : null}
+          {!selectedHistory && showNewFile ? <form className="writing-new-file" onSubmit={(event) => void createFile(event)}><input autoFocus disabled={templateSwitchOpen || workspaceUpdating} value={newFileName} onChange={(event) => setNewFileName(event.target.value)} placeholder="例如 intro.tex" aria-label="新文件路径" /><button type="submit" disabled={templateSwitchOpen || workspaceUpdating} aria-label="创建文件"><Check size={16} /></button></form> : null}
           <div className="writing-tree">{selectedHistory ? reviewLoading ? <div className="writing-review-empty"><LoaderCircle size={15} className="spin" /> 正在检查文件…</div> : reviewError && !reviewSummary ? <div className="writing-review-empty error">{reviewError}</div> : reviewSummary?.files.length ? <ReviewFileList changes={reviewSummary} selected={reviewSelectedPath} onSelect={setReviewSelectedPath} /> : <div className="writing-review-empty">与当前工作区没有差异。</div> : <FileTree files={workspace.files} selected={selectedPath} expanded={expanded} onToggle={(path) => setExpanded((current) => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next })} onSelect={(path) => void loadFile(path)} />}</div>
           <button className="writing-open-folder" onClick={() => void api.writingOpenFolder(folderPath).catch((reason) => setError(String(reason)))}><FolderOpen size={15} /> 在文件管理器中打开</button>
         </> : null}
@@ -633,7 +856,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
         <div className="writing-source">
           <div className="writing-source-head"><span><FileText size={15} />{selectedHistory ? reviewSelectedPath || '选择变更文件' : selectedPath || '未选择文件'}</span>{selectedHistory ? selectedReviewChange ? <small className={`writing-review-badge ${selectedReviewChange.status}`}>{changeLabel[selectedReviewChange.status]} · +{selectedReviewChange.additions} -{selectedReviewChange.deletions}</small> : null : <small className={`writing-save-state ${saveState}`}>{saveState === 'saved' ? '已保存' : saveState === 'saving' ? '保存中…' : saveState === 'error' ? '保存失败' : '待保存'}</small>}</div>
           {selectedHistory ? reviewLoading || reviewFileLoading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在生成版本差异…</div> : reviewError ? <div className="writing-source-state error"><CircleAlert size={18} />{reviewError}</div> : reviewFile?.binary ? <div className="writing-source-state"><FileText size={25} />这个文件是二进制文件或暂不支持文本对比。</div> : reviewSelectedPath && reviewFile ? <Suspense fallback={<div className="writing-source-state">正在准备对比视图…</div>}><WritingEditor key={`review:${selectedHistory}:${reviewSelectedPath}`} filePath={reviewSelectedPath} value={reviewFile.current} reviewOriginal={reviewFile.original} onChange={() => undefined} onSave={() => undefined} /></Suspense> : <div className="writing-source-state">选择左侧变更文件查看差异。</div>
-            : reading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在打开文件…</div> : selectedPath && editableFile(selectedPath) ? <Suspense fallback={<div className="writing-source-state">正在准备编辑器…</div>}><WritingEditor key={selectedPath} filePath={selectedPath} value={content} onChange={changeContent} onSave={() => void saveCurrent().catch(() => undefined)} jumpTo={jumpTarget?.path === selectedPath ? jumpTarget : undefined} /></Suspense> : <div className="writing-source-state"><FileText size={25} />{selectedPath ? '这个文件无法在内置编辑器中打开。' : '从左侧选择一个文件开始写作。'}</div>}
+            : reading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在打开文件…</div> : selectedPath && editableFile(selectedPath) ? <Suspense fallback={<div className="writing-source-state">正在准备编辑器…</div>}><WritingEditor key={`${selectedPath}:${editorRevision}`} filePath={selectedPath} value={content} onChange={changeContent} onSave={() => { if (!templateSwitchLockedRef.current) void saveCurrent().catch(() => undefined) }} jumpTo={jumpTarget?.path === selectedPath ? jumpTarget : undefined} /></Suspense> : <div className="writing-source-state"><FileText size={25} />{selectedPath ? '这个文件无法在内置编辑器中打开。' : '从左侧选择一个文件开始写作。'}</div>}
         </div>
         {showPdf ? <div className="writing-divider" role="separator" aria-label="调整编辑器与 PDF 预览宽度" aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(splitRatio * 100)} tabIndex={0}
           onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); splitPointerRef.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); setDraggingSplit(true); updateSplitFromPointer(event.clientX) }}
@@ -670,5 +893,6 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       </form>
     </div> : null}
     </section>
+    {templateSwitchOpen ? <WritingTemplateSwitchDialog templates={templates} templatesLoading={templatesLoading} template={templateSwitchTemplate} sourceMainFile={workspace.mainFile} preview={templateSwitchPreview} busy={templateSwitchBusy} error={templateSwitchError || templateError} needsRefresh={templateSwitchNeedsRefresh} returnFocusTarget={templateSwitchReturnFocusRef.current} onTemplateChange={chooseSwitchTemplate} onPreview={() => void previewTemplateSwitch()} onApply={() => void applyTemplateSwitch()} onClose={() => void closeTemplateSwitch()} /> : null}
   </>
 }

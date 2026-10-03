@@ -7,6 +7,7 @@ import type { LatexEngine, WritingChangeSummary, WritingCompileResult, WritingHi
 import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, ExperimentWorkspace, SkillInstallStatus, SkillProvider } from '../shared/experiments'
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
+import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../shared/writing'
 
 declare global {
   interface Window {
@@ -40,6 +41,9 @@ declare global {
       writingTemplateUpdate: (id: WritingTemplate, draft: WritingTemplateDraft) => Promise<WritingTemplateLibrary>
       writingTemplateRemove: (id: WritingTemplate) => Promise<WritingTemplateLibrary>
       writingTemplateSetDefault: (id: WritingTemplate | '') => Promise<WritingTemplateLibrary>
+      writingTemplateSwitchPreview: (folderPath: string, template: WritingTemplate) => Promise<WritingTemplateSwitchPreview>
+      writingTemplateSwitchApply: (folderPath: string, token: string) => Promise<WritingTemplateSwitchResult>
+      writingTemplateSwitchCancel: (folderPath: string, token: string) => Promise<void>
       writingInitialize: (folderPath: string, template: WritingTemplate) => Promise<WritingWorkspace>
       writingEnsureGit: (folderPath: string) => Promise<WritingWorkspace>
       writingRead: (folderPath: string, relativePath: string) => Promise<string>

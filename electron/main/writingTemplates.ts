@@ -338,4 +338,21 @@ export class WritingTemplateManager {
       return writing.initializeTemplate(folder, join(path, 'files'), item)
     })
   }
+
+  previewSwitch(folder: string, id: WritingTemplate, writing: WritingWorkspaceManager) {
+    return this.change(async () => {
+      if (typeof id !== 'string') throw new Error('请选择写作模板。')
+      if (!id.startsWith('custom:')) {
+        const template = builtinWritingTemplates.find(item => item.id === id)
+        if (!template) throw new Error('写作模板已不存在，请重新选择。')
+        return writing.previewTemplateSwitch(folder, template)
+      }
+      const data = await this.read()
+      const item = data.templates.find(template => template.id === id)
+      if (!item) throw new Error('写作模板已不存在，请重新选择。')
+      const path = this.itemPath('items', id.slice(7))
+      await this.verifyManaged(path)
+      return writing.previewTemplateSwitch(folder, { ...item }, join(path, 'files'))
+    })
+  }
 }

@@ -39,6 +39,12 @@ npm run dev
 
 自定义模板保留文件目录和主文件名，写作配置保存在 `.paper/.repaper-writing.json` 的 `mainFile` 字段。编辑器、编译、PDF 回跳、概况及项目 Agent 说明均使用该入口；旧项目继续使用 `manuscript.tex`。编译产物仍位于 `.paper/.build/`。全局模板库位于用户数据目录的 `writing-templates/`，Windows 默认是 `%APPDATA%\repaper\writing-templates`。
 
+### 已有文稿切换模板
+
+在已创建的写作页点击“切换模板”，选择内置模板或全局导入的模板。应用先保存编辑器中的改动，再生成预览，展示目标主文件、文件变化和主文件差异；只有确认该预览后才切换。原文稿的正文和导言区中的自定义内容会迁入新的主文件，原有图片、参考文献及包含文件继续保留，模板资源使用独立目录。无法可靠识别主文件结构时，预览会说明原因并停止自动迁移。
+
+切换会在 `.paper/` 的 Git 中保存原稿基线，并建立独立的模板分支。成功提示中的原版本可直接打开对比，原文件也保留在写作目录中；当前写作入口由 `.repaper-writing.json` 指向新主文件。预览后源文件发生变化时需要重新预览。切换后重新编译新稿，并核对期刊或会议特有的标题、作者、参考文献及宏包要求。
+
 ## 初始化已有目录
 
 全局“设置”页为 Codex 和 Claude Code 安装 `repaper-init`、`repaper-experiments`、`repaper-submissions` 与 `repaper-overview` 四个 SKILL。关联论文目录后，可让 Agent 使用 `repaper-init` 接入该目录。初始化会先检查目录内容，再运行 `repaper init --paper <目录>`：创建 `.repaper/`，并在根目录维护 `AGENTS.md` 的 re:paper 说明；已有文件中的其他内容会保留。空目录到此为止，不会提前生成文稿或虚构实验记录。通过应用启动 Claude Code 时，会提示它读取同一份 `AGENTS.md`；已有 `CLAUDE.md` 的项目也会同步更新其中的 re:paper 区块。
