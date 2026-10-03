@@ -7,6 +7,7 @@ import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, Exp
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../../shared/writing'
+import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -82,6 +83,11 @@ const paperApi = {
     return () => ipcRenderer.removeListener('experiments:changed', listener)
   },
   submissionsGet: (folderPath: string): Promise<SubmissionWorkspace> => ipcRenderer.invoke('submissions:get', folderPath),
+  submissionSnapshotsList: (folderPath: string, submissionId?: string): Promise<SubmissionSnapshot[]> => ipcRenderer.invoke('submissions:snapshots:list', folderPath, submissionId),
+  submissionSnapshotInspectCommit: (folderPath: string, commit: string): Promise<SubmissionSnapshotCommitInspection> => ipcRenderer.invoke('submissions:snapshot:inspect-commit', folderPath, commit),
+  submissionSnapshotCreate: (folderPath: string, draft: SubmissionSnapshotDraft, includeSupplements: boolean): Promise<SubmissionSnapshot | null> => ipcRenderer.invoke('submissions:snapshot:create', folderPath, draft, includeSupplements),
+  submissionSnapshotOpenFile: (folderPath: string, id: string, path: string): Promise<void> => ipcRenderer.invoke('submissions:snapshot:file:open', folderPath, id, path),
+  submissionSnapshotExport: (folderPath: string, id: string): Promise<boolean> => ipcRenderer.invoke('submissions:snapshot:export', folderPath, id),
   submissionsSave: (folderPath: string, draft: SubmissionAttemptDraft, id?: string): Promise<SubmissionAttempt> => ipcRenderer.invoke('submissions:save', folderPath, draft, id),
   submissionsAdoptLegacy: (folderPath: string, legacy: LegacySubmission, versionLabel?: string): Promise<SubmissionAttempt> => ipcRenderer.invoke('submissions:adopt-legacy', folderPath, legacy, versionLabel),
   submissionsEventSave: (folderPath: string, submissionId: string, draft: SubmissionEventDraft, id?: string): Promise<SubmissionEvent> => ipcRenderer.invoke('submissions:event:save', folderPath, submissionId, draft, id),

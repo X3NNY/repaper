@@ -20,6 +20,8 @@ import type { ExperimentImportanceValue, SkillProvider } from '../../shared/expe
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject } from '../../shared/overview'
 import { editOverviewNode, loadOverview, overviewDirectory, overviewMaterial, saveOverviewNote } from './overview'
 import { OverviewAgentManager } from './overviewAgent'
+import type { SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
+import { createSubmissionSnapshot, exportSubmissionSnapshotZip, inspectSubmissionSnapshotCommit, listSubmissionSnapshots, submissionSnapshotFilePath } from './submissionSnapshots'
 
 let mainWindow: BrowserWindow | null = null
 let saveQueue: Promise<void> = Promise.resolve()
@@ -450,6 +452,41 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('submissions:save', async (_event, folderPath: string, draft: SubmissionAttemptDraft, id?: string) =>
     saveSubmission(await requireFolder(folderPath), draft, id))
+  ipcMain.handle('submissions:snapshots:list', async (_event, folderPath: string, submissionId?: string) =>
+    listSubmissionSnapshots(await requireFolder(folderPath), submissionId))
+  ipcMain.handle('submissions:snapshot:inspect-commit', async (_event, folderPath: string, commit: string) =>
+    inspectSubmissionSnapshotCommit(await requireFolder(folderPath), commit))
+  ipcMain.handle('submissions:snapshot:create', async (_event, folderPath: string, draft: SubmissionSnapshotDraft, includeSupplements: boolean) => {
+    const folder = await requireFolder(folderPath)
+    if (!draft || typeof draft !== 'object' || typeof includeSupplements !== 'boolean') throw new Error('投稿材料配置无效。')
+    await inspectSubmissionSnapshotCommit(folder, draft.gitCommit)
+    const pdfOptions = { title: '选择实际投递的论文 PDF', properties: ['openFile' as const], filters: [{ name: '论文 PDF', extensions: ['pdf'] }] }
+    const pdf = mainWindow ? await dialog.showOpenDialog(mainWindow, pdfOptions) : await dialog.showOpenDialog(pdfOptions)
+    if (pdf.canceled || !pdf.filePaths[0]) return null
+    let supplements: string[] = []
+    if (includeSupplements) {
+      const options = { title: '选择这次投递的补充材料', properties: ['openFile' as const, 'multiSelections' as const] }
+      const chosen = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+      if (chosen.canceled) return null
+      supplements = chosen.filePaths
+    }
+    const snapshot = await createSubmissionSnapshot(folder, draft, { pdfFilePath: pdf.filePaths[0], supplementFilePaths: supplements })
+    mainWindow?.webContents.send('submissions:changed', folder)
+    return snapshot
+  })
+  ipcMain.handle('submissions:snapshot:file:open', async (_event, folderPath: string, id: string, path: string) => {
+    const file = await submissionSnapshotFilePath(await requireFolder(folderPath), id, path)
+    const error = await shell.openPath(file)
+    if (error) throw new Error(error)
+  })
+  ipcMain.handle('submissions:snapshot:export', async (_event, folderPath: string, id: string) => {
+    const folder = await requireFolder(folderPath)
+    const options = { title: '导出投稿材料', defaultPath: `submission-${id}.zip`, filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }] }
+    const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return false
+    await exportSubmissionSnapshotZip(folder, id, result.filePath)
+    return true
+  })
   ipcMain.handle('submissions:adopt-legacy', async (_event, folderPath: string, legacy: LegacySubmission, versionLabel?: string) =>
     adoptLegacySubmission(await requireFolder(folderPath), legacy, versionLabel))
   ipcMain.handle('submissions:event:save', async (_event, folderPath: string, submissionId: string, draft: SubmissionEventDraft, id?: string) =>

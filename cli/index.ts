@@ -15,6 +15,7 @@ import { submissionEventSortKey } from '../shared/submissions'
 import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/submissions'
 import { loadOverview, publishJourney, saveOverviewNote } from '../electron/main/overview'
 import type { OverviewDraft, OverviewNoteDraft } from '../shared/overview'
+import { listSubmissionSnapshots, loadSubmissionSnapshot } from '../electron/main/submissionSnapshots'
 
 const HELP = `re:paper 项目命令
 
@@ -28,6 +29,8 @@ const HELP = `re:paper 项目命令
   repaper submission list [--json]
   repaper submission timeline [--json]
   repaper submission show <投稿ID> [--json]
+  repaper submission snapshots [<投稿ID>] [--json]
+  repaper submission snapshot <归档ID> [--json]
   repaper submission create --file <投稿JSON>
   repaper submission update <投稿ID> --file <投稿JSON>
   repaper submission event <投稿ID> --file <事件JSON> [--id <事件ID>]
@@ -222,6 +225,16 @@ async function main(): Promise<void> {
   }
   if (command === 'submission') {
     const verb = args.shift()
+    if (verb === 'snapshots' || verb === 'snapshot') {
+      const positionals = args.filter(arg => arg !== '--json')
+      if (positionals.some(arg => arg.startsWith('--')) || positionals.length > 1 || verb === 'snapshot' && positionals.length !== 1) throw new Error('用法：repaper submission snapshots [<投稿ID>] [--json] 或 snapshot <归档ID> [--json]')
+      if (verb === 'snapshot') output(await loadSubmissionSnapshot(root, positionals[0]), args.includes('--json'))
+      else {
+        const snapshots = await listSubmissionSnapshots(root, positionals[0])
+        output(args.includes('--json') ? snapshots : snapshots.map(item => `${item.id} · ${item.label} · ${item.gitCommit.slice(0, 10)} · ${item.files.length} 个文件`).join('\n') || '暂无投稿材料归档。', args.includes('--json'))
+      }
+      return
+    }
     if (verb === 'timeline') {
       if (args.some((arg) => arg !== '--json')) throw new Error('用法：repaper submission timeline [--json]')
       const state = await loadSubmissions(root)
@@ -293,7 +306,7 @@ async function main(): Promise<void> {
       output(`已保存投稿事件 ${event.id} · ${event.kind}`, false)
       return
     }
-    throw new Error('用法：repaper submission list|timeline|show|create|update|event ...')
+    throw new Error('用法：repaper submission list|timeline|show|snapshots|snapshot|create|update|event ...')
   }
   if (command === 'status') {
     const json = args.includes('--json')

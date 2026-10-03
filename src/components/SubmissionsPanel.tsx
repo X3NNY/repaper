@@ -19,6 +19,7 @@ import type {
 } from '../../shared/submissions'
 import { today } from '../lib/workspace'
 import SelectField from './SelectField'
+import SubmissionSnapshots from './SubmissionSnapshots'
 import type { OverviewFocus } from '../../shared/overview'
 
 interface Props {
@@ -433,8 +434,8 @@ function ReviewCard({ review, index, total, eventSources, folderPath, onOpenSour
   </details>
 }
 
-function EventCard({ event, folderPath, onEdit, onDelete, onOrganize, onError }: {
-  event: SubmissionEvent; folderPath: string; onEdit: () => void; onDelete: () => void; onOrganize: () => void; onError: (message: string) => void
+function EventCard({ event, folderPath, attempt, writingVersions, onEdit, onDelete, onOrganize, onError }: {
+  event: SubmissionEvent; folderPath: string; attempt: SubmissionAttempt; writingVersions: WritingHistoryEntry[]; onEdit: () => void; onDelete: () => void; onOrganize: () => void; onError: (message: string) => void
 }) {
   async function openReviewSource(source: SubmissionSource) {
     try {
@@ -461,6 +462,7 @@ function EventCard({ event, folderPath, onEdit, onDelete, onOrganize, onError }:
     {event.kind === 'decision' ? <div className="submission-decision-details"><span className={`submission-status ${['reject', 'desk_reject', 'withdrawn'].includes(event.decision) ? 'red' : ['accept', 'conditional_accept'].includes(event.decision) ? 'green' : 'amber'}`}>{event.decision ? decisionLabels[event.decision] : '编辑决定'}</span>{event.rawDecision ? <span>原文：{event.rawDecision}</span> : null}{event.deadline ? <span>截止：{day(event.deadline)}</span> : null}</div> : null}
     {event.editorConclusion ? <div className="submission-editor-conclusion"><strong>编辑结论</strong><p>{event.editorConclusion}</p></div> : null}
     {event.versionLabel || event.gitCommit ? <div className="submission-event-version">提交版本：{event.versionLabel || '未命名'}{event.gitCommit ? <code>{event.gitCommit.slice(0, 12)}</code> : null}</div> : null}
+    {event.kind === 'revision' ? <SubmissionSnapshots folderPath={folderPath} attempt={attempt} event={event} writingVersions={writingVersions} /> : null}
     {event.reviews.length ? <div className="submission-review-list">
       <strong className="submission-section-caption">审稿意见 · {event.reviews.length}</strong>
       {event.reviews.map((review, index) => <ReviewCard key={review.id || index} review={review} index={index} total={event.reviews.length} eventSources={event.sources} folderPath={folderPath} onOpenSource={(source) => { void openReviewSource(source) }} onOpenUrl={(url) => { void openReviewUrl(url) }} />)}
@@ -495,7 +497,7 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
     const event = target.eventId ? [...(attempt?.querySelectorAll<HTMLElement>('[data-event-id]') ?? [])].find(item => item.dataset.eventId === target.eventId) : undefined
     const review = target.reviewId ? [...(event?.querySelectorAll<HTMLDetailsElement>('[data-review-id]') ?? [])].find(item => item.dataset.reviewId === target.reviewId) : undefined
     const destination = target.reviewId ? review : target.eventId ? event : attempt
-    if (!destination) { setError('概况引用的投稿或审稿记录已不存在。'); return }
+    if (!destination) { setError('引用的投稿或审稿记录已不存在。'); return }
     if (review) review.open = true
     destination.scrollIntoView({ block: 'center' })
   }, [focusSource, workspace])
@@ -611,8 +613,9 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
             <div className="submission-attempt-actions"><button type="button" className="icon-button subtle" onClick={() => setEditor({ type: 'attempt', record: attempt })} title="编辑投稿" aria-label={`编辑 ${attempt.venue}`}><Pencil size={16} /></button><button type="button" className="icon-button subtle danger-hover" disabled={busyId === attempt.id} onClick={() => void deleteRecord('attempt', attempt.id, attempt.venue)} title="删除投稿" aria-label={`删除 ${attempt.venue}`}><Trash2 size={16} /></button></div>
           </div>
           {attempt.notes ? <p className="submission-attempt-notes">{attempt.notes}</p> : null}
+          <SubmissionSnapshots folderPath={folderPath} attempt={attempt} writingVersions={writingVersions} />
           <div className="submission-events-head"><span>进展 · {events.length}</span><button type="button" className="link-button" onClick={() => setEditor({ type: 'event', attempt })}><Plus size={15} />添加进展</button></div>
-          {events.length ? <div className="submission-events">{events.map((event) => <EventCard key={event.id} event={event} folderPath={folderPath} onEdit={() => setEditor({ type: 'event', attempt, record: event })} onDelete={() => void deleteRecord('event', event.id, eventTitle(event))} onOrganize={() => { void organizeEvent(event).catch(() => undefined) }} onError={setError} />)}</div> : <div className="submission-events-empty"><FileText size={17} />已记录投递。收到审稿、编辑决定或提交修订稿后，可在这里继续添加。</div>}
+          {events.length ? <div className="submission-events">{events.map((event) => <EventCard key={event.id} event={event} folderPath={folderPath} attempt={attempt} writingVersions={writingVersions} onEdit={() => setEditor({ type: 'event', attempt, record: event })} onDelete={() => void deleteRecord('event', event.id, eventTitle(event))} onOrganize={() => { void organizeEvent(event).catch(() => undefined) }} onError={setError} />)}</div> : <div className="submission-events-empty"><FileText size={17} />已记录投递。收到审稿、编辑决定或提交修订稿后，可在这里继续添加。</div>}
         </article>
       })())}</div> : <div className="submissions-empty"><div className="submissions-empty-icon"><Send size={25} /></div><h2>尚无投稿记录</h2><p>新建一次投稿，随后逐次添加审稿意见、编辑决定和修订结果。</p><button className="button button-primary" onClick={() => folderPath ? setEditor({ type: 'attempt' }) : onChooseFolder()}><Plus size={15} />{folderPath ? '记录投稿' : '选择目录'}</button></div>}
     </main>

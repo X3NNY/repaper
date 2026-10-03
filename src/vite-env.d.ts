@@ -8,6 +8,7 @@ import type { ExperimentImportanceValue, ExperimentItem, ExperimentOverview, Exp
 import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, SubmissionEvent, SubmissionEventDraft, SubmissionWorkspace } from '../shared/submissions'
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../shared/writing'
+import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../shared/submissionSnapshots'
 
 declare global {
   interface Window {
@@ -67,6 +68,11 @@ declare global {
       experimentsRevisions: (folderPath: string, experimentId: string) => Promise<ExperimentOverview[]>
       onExperimentsChanged: (callback: (folderPath: string) => void) => () => void
       submissionsGet: (folderPath: string) => Promise<SubmissionWorkspace>
+      submissionSnapshotsList: (folderPath: string, submissionId?: string) => Promise<SubmissionSnapshot[]>
+      submissionSnapshotInspectCommit: (folderPath: string, commit: string) => Promise<SubmissionSnapshotCommitInspection>
+      submissionSnapshotCreate: (folderPath: string, draft: SubmissionSnapshotDraft, includeSupplements: boolean) => Promise<SubmissionSnapshot | null>
+      submissionSnapshotOpenFile: (folderPath: string, id: string, path: string) => Promise<void>
+      submissionSnapshotExport: (folderPath: string, id: string) => Promise<boolean>
       submissionsSave: (folderPath: string, draft: SubmissionAttemptDraft, id?: string) => Promise<SubmissionAttempt>
       submissionsAdoptLegacy: (folderPath: string, legacy: LegacySubmission, versionLabel?: string) => Promise<SubmissionAttempt>
       submissionsEventSave: (folderPath: string, submissionId: string, draft: SubmissionEventDraft, id?: string) => Promise<SubmissionEvent>

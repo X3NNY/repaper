@@ -116,6 +116,12 @@ JSON 草稿文件需位于论文工作目录中。投稿草稿使用 `venue`、`
 
 全局“设置”页按提供方检查四个 SKILL 与 CLI，并比较安装版本与内置内容。一键安装会同时复制四个 SKILL 和 CLI；更新已有 SKILL 时会先备份原 `SKILL.md`。从投稿页或概况页启动整理时也会自动准备对应 Agent 的投稿或研究脉络 SKILL。安装一次对所有论文生效；新建或重启 Agent 会话后可加载新安装的 SKILL。源码位于 `skills/repaper-init/`、`skills/repaper-experiments/`、`skills/repaper-submissions/` 与 `skills/repaper-overview/`。
 
+## 投稿材料归档
+
+每次投稿的“投稿材料”以及修订稿进展的“修订稿材料”可保存独立归档。先选择 `.paper/` 中明确的 Git 版本并查看源码清单，再选择实际投递的 PDF；需要时可同时选取补充文件。没有写作版本时，先在写作页记录版本。PDF 来自用户选择，应用不自动将当前编译文件当作历史投稿文件，也不会宣称已核实 PDF 与源码版本一致。
+
+每份归档固定保存 PDF、选定提交中的源码、补充文件以及含大小和 SHA-256 的清单。可以打开单个文件或导出 ZIP；后续修改文稿不会改变归档。新增归档会保留已有材料；含归档的投稿或修订进展不能删除，以保留追溯入口。材料保存在 `.repaper/submissions/snapshots/<归档ID>/`，Agent 可通过 `repaper submission snapshots <投稿ID> --json` 和 `repaper submission snapshot <归档ID> --json` 读取清单，再打开对应来源文件。
+
 ## 研究脉络与思考记录
 
 概况先汇集现有实验、概览修订、运行、投稿与审稿、文稿源文件和内部 Git 版本，以及旧版项目记录。普通运行、文稿提交和源文件默认放在过程记录中。Agent 整理产生研究问题、主张、发现、决定和有出处的关系；人工编辑会独立保存，后续整理不会覆盖。

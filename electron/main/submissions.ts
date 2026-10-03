@@ -10,6 +10,7 @@ import type {
 } from '../../shared/submissions'
 import { initializeProject } from './experiments'
 import { ensureProjectInstructions } from './projectSetup'
+import { listSubmissionSnapshots } from './submissionSnapshots'
 
 const attemptIdPattern = /^s_[a-f0-9-]{36}$/
 const eventIdPattern = /^se_[a-f0-9-]{36}$/
@@ -603,6 +604,7 @@ export async function markSubmissionAgentSent(root: string, eventId: string, ter
 }
 
 async function deleteSubmissionEventNow(root: string, id: string): Promise<void> {
+  if ((await listSubmissionSnapshots(root)).some(snapshot => snapshot.eventId === id)) throw new Error('这条进展已保存投稿材料，需要保留以便追溯归档。')
   const event = await readJson<SubmissionEvent>(eventFile(root, id))
   await unlink(eventFile(root, id))
   await unlink(agentFile(root, id)).catch((error: NodeJS.ErrnoException) => {
@@ -623,6 +625,7 @@ export async function deleteSubmissionEvent(root: string, id: string): Promise<v
 export async function deleteSubmission(root: string, id: string): Promise<void> {
   await ensureStore(root)
   await withSubmissionLock(root, id, async () => {
+    if ((await listSubmissionSnapshots(root, id)).length) throw new Error('这次投稿已保存投稿材料，需要保留以便追溯归档。')
     const attempts = await readFiles<SubmissionAttempt>(join(store(root), 'attempts'))
     if (attempts.some((item) => item.previousSubmissionId === id)) throw new Error('这次投稿仍被下一轮投稿引用，请先修改关联关系。')
     const events = await readFiles<SubmissionEvent>(join(store(root), 'events'))
