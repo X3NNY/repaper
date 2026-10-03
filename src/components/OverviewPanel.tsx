@@ -10,6 +10,7 @@ import type { Paper } from '../../shared/model'
 import type { OverviewImage, OverviewNode, OverviewNote, OverviewSource, OverviewTarget, OverviewWorkspace } from '../../shared/overview'
 import { overviewKindLabels, overviewRelationLabels } from '../../shared/overview'
 import SelectField from './SelectField'
+import type { ProjectSearchTarget } from '../../shared/search'
 
 interface Props {
   paper: Paper
@@ -18,6 +19,8 @@ interface Props {
   onOrganize: () => Promise<void>
   onOpenSource: (target: OverviewTarget) => void
   onTab: (tab: 'writing' | 'experiments' | 'submissions' | 'sessions') => void
+  focusSearch?: { target: ProjectSearchTarget; requestId: number } | null
+  onSearchFocused?: () => void
 }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 const day = (value: string) => value ? new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)) : ''
@@ -123,7 +126,7 @@ function SourceSnapshot({ source, current, folder, materials, onOpen }: { source
   </details>
 }
 
-export default function OverviewPanel({ paper, toolbarTarget, onChooseFolder, onOrganize, onOpenSource, onTab }: Props) {
+export default function OverviewPanel({ paper, toolbarTarget, onChooseFolder, onOrganize, onOpenSource, onTab, focusSearch, onSearchFocused }: Props) {
   const api = window.paperApi
   const folder = paper.folderPath
   const [state, setState] = useState<OverviewWorkspace | null>(null)
@@ -132,6 +135,7 @@ export default function OverviewPanel({ paper, toolbarTarget, onChooseFolder, on
   const [error, setError] = useState('')
   const [view, setView] = useState<'journey' | 'evidence'>('journey')
   const [selectedId, setSelectedId] = useState('')
+  const searchRequest = useRef<number | null>(null)
   const [centerId, setCenterId] = useState('')
   const [showProcess, setShowProcess] = useState(false)
   const [noteEditor, setNoteEditor] = useState<{ record?: OverviewNote } | null>(null)
@@ -197,6 +201,35 @@ export default function OverviewPanel({ paper, toolbarTarget, onChooseFolder, on
   function openNote(record?: OverviewNote) {
     setNoteEditor({ record }); setNoteText(record?.text ?? ''); setNoteDate(record?.occurredAt?.slice(0, 10) ?? ''); setImages([]); setError('')
   }
+  useEffect(() => {
+    if (!state || !focusSearch || searchRequest.current === focusSearch.requestId) return
+    const target = focusSearch.target
+    searchRequest.current = focusSearch.requestId
+    onSearchFocused?.()
+    if (target.type === 'overview' && target.noteId) {
+      const note = state.notes.find(item => item.id === target.noteId)
+      if (note) openNote(note)
+      else setError('引用的思考记录已不存在。')
+      return
+    }
+    if (target.type === 'overview' && !target.nodeId) {
+      setView('journey')
+      requestAnimationFrame(() => document.querySelector('.journey-current')?.scrollIntoView({ block: 'start' }))
+      return
+    }
+    const id = target.type === 'overview' ? target.nodeId : target.type === 'route' ? `route:${target.routeId}` : target.type === 'revision' ? `revision-task:${target.revisionId}` : target.type === 'project' ? 'project:summary' : undefined
+    if (id && state.nodes.some(node => node.id === id)) {
+      setView('journey'); setShowProcess(true); setSelectedId(id)
+      requestAnimationFrame(() => {
+        [...document.querySelectorAll<HTMLElement>('[data-journey-node-id]')].find(element => element.dataset.journeyNodeId === id)?.scrollIntoView({ block: 'center' })
+        if (target.type === 'route' && target.implementationId) {
+          for (const detail of document.querySelectorAll<HTMLDetailsElement>('.journey-detail details')) detail.open = true
+          document.querySelector('.journey-detail')?.scrollIntoView({ block: 'start' })
+        }
+      })
+    } else if (target.type === 'project') document.querySelector('.paper-head')?.scrollIntoView({ block: 'start' })
+    else if (id) setError('引用的研究记录已不存在，请刷新搜索结果。')
+  }, [state, focusSearch])
   async function organize() {
     if (!folder) { onChooseFolder(); return }
     setBusy(true); setError('')

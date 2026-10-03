@@ -16,11 +16,14 @@ import type { SubmissionAttemptDraft, SubmissionEventDraft } from '../shared/sub
 import { loadOverview, publishJourney, saveOverviewNote } from '../electron/main/overview'
 import type { OverviewDraft, OverviewNoteDraft } from '../shared/overview'
 import { listSubmissionSnapshots, loadSubmissionSnapshot } from '../electron/main/submissionSnapshots'
+import { searchProject } from '../electron/main/projectSearch'
+import type { ProjectSearchKind } from '../shared/search'
 
 const HELP = `re:paper 项目命令
 
   repaper init [--paper <目录>]
   repaper writing import <LaTeX主文件> [--paper <目录>]
+  repaper search <关键词> [--kind manuscript|experiment|submission|overview] [--limit <数量>] [--offset <位置>] [--json]
   repaper overview context [--json]
   repaper overview show [--json]
   repaper overview publish --file <研究脉络JSON>
@@ -188,6 +191,22 @@ async function main(): Promise<void> {
     return
   }
   const root = await findProjectRoot(process.cwd(), extracted.paper)
+  if (command === 'search') {
+    const json = args.includes('--json')
+    const parsed = parse(args.filter(arg => arg !== '--json'), ['kind', 'limit', 'offset'])
+    if (!parsed.positionals.length || parsed.rest.length) throw new Error('用法：repaper search <关键词> [--kind <类型>] [--limit <数量>] [--offset <位置>] [--json]')
+    const result = await searchProject(root, parsed.positionals.join(' '), {
+      kinds: one(parsed, 'kind') ? one(parsed, 'kind')!.split(',') as ProjectSearchKind[] : undefined,
+      limit: one(parsed, 'limit') === undefined ? undefined : Number(one(parsed, 'limit')),
+      offset: one(parsed, 'offset') === undefined ? undefined : Number(one(parsed, 'offset'))
+    })
+    output(json ? result : [
+      ...result.results.map(item => `${item.kind} · ${item.title}${item.sourcePath ? ` · ${item.sourcePath}${item.match.line ? `:${item.match.line}` : ''}` : ''}\n  ${item.snippet}`),
+      ...result.warnings.map(item => `范围提示：${item.sourcePath} · ${item.message}`),
+      `匹配 ${result.totalIsExact ? '' : '至少 '}${result.total} 条${result.nextOffset === undefined ? '' : ` · 下一页 --offset ${result.nextOffset}`}`
+    ].join('\n'), json)
+    return
+  }
   if (command === 'overview') {
     const verb = args.shift()
     if (verb === 'context' || verb === 'show') {

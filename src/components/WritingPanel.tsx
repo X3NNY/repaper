@@ -450,10 +450,11 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     const target = focusSource.target
     void (async () => {
       if (target.commit) { await startReview(target.commit); return }
+      setSelectedHistory(''); setReviewSummary(null); setReviewSelectedPath(null); setReviewFile(null); setReviewError('')
       const path = target.path || workspace?.mainFile || 'manuscript.tex'
       if (!hasFile(workspace.files, path)) { setError('概况引用的文稿文件已不存在：' + path); return }
       await loadFile(path)
-      if (target.line && documentRef.current.path === path) setJumpTarget({ path, line: target.line, column: 1, requestId: ++jumpRequestRef.current })
+      if (target.line && documentRef.current.path === path) setJumpTarget({ path, line: target.line, column: Math.max(0, (target.column ?? 1) - 1), requestId: ++jumpRequestRef.current })
       const parts = path.split('/')
       setExpanded(current => { const next = new Set(current); for (let index = 1; index < parts.length; index++) next.add(parts.slice(0, index).join('/')); return next })
     })().catch(reason => setError(reason instanceof Error ? reason.message : '无法打开概况引用的版本。'))

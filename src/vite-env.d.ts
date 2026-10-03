@@ -9,10 +9,13 @@ import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, 
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../shared/overview'
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../shared/writing'
 import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../shared/submissionSnapshots'
+import type { ProjectSearchOptions, ProjectSearchResponse } from '../shared/search'
 
 declare global {
   interface Window {
     paperApi?: {
+      projectSearch: (folderPath: string, query: string, options?: ProjectSearchOptions) => Promise<ProjectSearchResponse>
+      projectSearchCancel: () => Promise<void>
       overviewGet: (folderPath: string, project?: OverviewProject) => Promise<OverviewWorkspace>
       overviewNoteSave: (folderPath: string, draft: OverviewNoteDraft, id?: string) => Promise<void>
       overviewNodeEdit: (folderPath: string, id: string, edit: OverviewEdit) => Promise<void>

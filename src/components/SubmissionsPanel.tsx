@@ -327,7 +327,7 @@ function EventEditor({ attempt, record, folderPath, onClose, onSave, onOrganize 
   </div>
 }
 
-function SourceView({ source, folderPath, onError }: { source: SubmissionSource; folderPath: string; onError: (message: string) => void }) {
+function SourceView({ source, folderPath, focused = false, onError }: { source: SubmissionSource; folderPath: string; focused?: boolean; onError: (message: string) => void }) {
   async function open() {
     try {
       const api = window.paperApi
@@ -340,7 +340,7 @@ function SourceView({ source, folderPath, onError }: { source: SubmissionSource;
       }
     } catch (reason) { onError(String(reason)) }
   }
-  return <div className="submission-source"><span className="submission-source-kind">{sourceLabels[source.kind]}</span><strong>{source.label}</strong>{source.path || source.url ? <button type="button" onClick={() => void open()} aria-label={`打开 ${source.label}`}><ArrowUpRight size={14} />打开</button> : null}{source.text ? <details><summary>查看原文</summary><pre>{source.text}</pre></details> : null}</div>
+  return <div className="submission-source" data-source-id={source.id} tabIndex={-1} role="group" aria-label={`原始材料：${source.label}`}><span className="submission-source-kind">{sourceLabels[source.kind]}</span><strong>{source.label}</strong>{source.path || source.url ? <button type="button" onClick={() => void open()} aria-label={`打开 ${source.label}`}><ArrowUpRight size={14} />打开</button> : null}{source.text ? <details><summary>查看原文</summary><pre>{source.text}</pre></details> : focused && (source.path || source.url) ? <span className="submission-source-kind">点击“打开”查看{source.path ? '原始文件' : '原始链接'}。</span> : null}</div>
 }
 
 function ReviewSourceImage({ source, folderPath, active }: { source: SubmissionSource; folderPath: string; active: boolean }) {
@@ -434,8 +434,8 @@ function ReviewCard({ review, index, total, eventSources, folderPath, onOpenSour
   </details>
 }
 
-function EventCard({ event, folderPath, attempt, writingVersions, onEdit, onDelete, onOrganize, onError }: {
-  event: SubmissionEvent; folderPath: string; attempt: SubmissionAttempt; writingVersions: WritingHistoryEntry[]; onEdit: () => void; onDelete: () => void; onOrganize: () => void; onError: (message: string) => void
+function EventCard({ event, folderPath, attempt, writingVersions, focusedSourceId, onEdit, onDelete, onOrganize, onError }: {
+  event: SubmissionEvent; folderPath: string; attempt: SubmissionAttempt; writingVersions: WritingHistoryEntry[]; focusedSourceId?: string; onEdit: () => void; onDelete: () => void; onOrganize: () => void; onError: (message: string) => void
 }) {
   async function openReviewSource(source: SubmissionSource) {
     try {
@@ -467,7 +467,7 @@ function EventCard({ event, folderPath, attempt, writingVersions, onEdit, onDele
       <strong className="submission-section-caption">审稿意见 · {event.reviews.length}</strong>
       {event.reviews.map((review, index) => <ReviewCard key={review.id || index} review={review} index={index} total={event.reviews.length} eventSources={event.sources} folderPath={folderPath} onOpenSource={(source) => { void openReviewSource(source) }} onOpenUrl={(url) => { void openReviewUrl(url) }} />)}
     </div> : null}
-    {event.sources.length ? <details className="submission-source-list"><summary className="submission-section-caption"><span>原始材料 · {event.sources.length}</span><ChevronDown size={14} aria-hidden="true" /></summary><div className="submission-source-items">{event.sources.map((source) => <SourceView key={source.id} source={source} folderPath={folderPath} onError={onError} />)}</div></details> : null}
+    {event.sources.length ? <details className="submission-source-list"><summary className="submission-section-caption"><span>原始材料 · {event.sources.length}</span><ChevronDown size={14} aria-hidden="true" /></summary><div className="submission-source-items">{event.sources.map((source) => <SourceView key={source.id} source={source} folderPath={folderPath} focused={source.id === focusedSourceId} onError={onError} />)}</div></details> : null}
     <div className="submission-event-footer">{event.agentSession ? <span>已关联 {event.agentSession.provider === 'codex' ? 'Codex' : 'Claude Code'} 会话</span> : null}<button type="button" className="link-button" onClick={onOrganize}><Sparkles size={13} />继续让 Agent 整理</button></div>
   </article>
 }
@@ -496,9 +496,16 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
     const attempt = [...document.querySelectorAll<HTMLElement>('[data-submission-id]')].find(item => item.dataset.submissionId === submissionId)
     const event = target.eventId ? [...(attempt?.querySelectorAll<HTMLElement>('[data-event-id]') ?? [])].find(item => item.dataset.eventId === target.eventId) : undefined
     const review = target.reviewId ? [...(event?.querySelectorAll<HTMLDetailsElement>('[data-review-id]') ?? [])].find(item => item.dataset.reviewId === target.reviewId) : undefined
-    const destination = target.reviewId ? review : target.eventId ? event : attempt
-    if (!destination) { setError('引用的投稿或审稿记录已不存在。'); return }
+    const source = target.sourceId ? [...((event ?? attempt)?.querySelectorAll<HTMLElement>('[data-source-id]') ?? [])].find(item => item.dataset.sourceId === target.sourceId) : undefined
+    const destination = target.sourceId ? source : target.reviewId ? review : target.eventId ? event : attempt
+    if (!destination) { setError('引用的投稿、审稿或原始材料已不存在。'); return }
     if (review) review.open = true
+    if (source) {
+      const sourceList = source.closest<HTMLDetailsElement>('details.submission-source-list')
+      if (sourceList) sourceList.open = true
+      for (const details of source.querySelectorAll<HTMLDetailsElement>('details')) details.open = true
+      source.focus({ preventScroll: true })
+    }
     destination.scrollIntoView({ block: 'center' })
   }, [focusSource, workspace])
 
@@ -598,6 +605,8 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
         const state = currentState(events, attempt.legacyStatus)
         const previous = attempts.find((item) => item.id === attempt.previousSubmissionId)
         const linkedVersion = paper.versions.find((item) => item.id === attempt.versionId)
+        const focusTarget = focusSource?.target
+        const focusedSourceId = focusTarget?.type === 'submission' && (focusTarget.submissionId === attempt.id || focusTarget.submissionId === attempt.legacyId) ? focusTarget.sourceId : undefined
         return <article className="submission-attempt" data-submission-id={attempt.id} key={attempt.id}>
           <div className="submission-attempt-head">
             <div className="submission-attempt-main">
@@ -615,7 +624,7 @@ export default function SubmissionsPanel({ paper, toolbarTarget, onChooseFolder,
           {attempt.notes ? <p className="submission-attempt-notes">{attempt.notes}</p> : null}
           <SubmissionSnapshots folderPath={folderPath} attempt={attempt} writingVersions={writingVersions} />
           <div className="submission-events-head"><span>进展 · {events.length}</span><button type="button" className="link-button" onClick={() => setEditor({ type: 'event', attempt })}><Plus size={15} />添加进展</button></div>
-          {events.length ? <div className="submission-events">{events.map((event) => <EventCard key={event.id} event={event} folderPath={folderPath} attempt={attempt} writingVersions={writingVersions} onEdit={() => setEditor({ type: 'event', attempt, record: event })} onDelete={() => void deleteRecord('event', event.id, eventTitle(event))} onOrganize={() => { void organizeEvent(event).catch(() => undefined) }} onError={setError} />)}</div> : <div className="submission-events-empty"><FileText size={17} />已记录投递。收到审稿、编辑决定或提交修订稿后，可在这里继续添加。</div>}
+          {events.length ? <div className="submission-events">{events.map((event) => <EventCard key={event.id} event={event} folderPath={folderPath} attempt={attempt} writingVersions={writingVersions} focusedSourceId={focusedSourceId} onEdit={() => setEditor({ type: 'event', attempt, record: event })} onDelete={() => void deleteRecord('event', event.id, eventTitle(event))} onOrganize={() => { void organizeEvent(event).catch(() => undefined) }} onError={setError} />)}</div> : <div className="submission-events-empty"><FileText size={17} />已记录投递。收到审稿、编辑决定或提交修订稿后，可在这里继续添加。</div>}
         </article>
       })())}</div> : <div className="submissions-empty"><div className="submissions-empty-icon"><Send size={25} /></div><h2>尚无投稿记录</h2><p>新建一次投稿，随后逐次添加审稿意见、编辑决定和修订结果。</p><button className="button button-primary" onClick={() => folderPath ? setEditor({ type: 'attempt' }) : onChooseFolder()}><Plus size={15} />{folderPath ? '记录投稿' : '选择目录'}</button></div>}
     </main>

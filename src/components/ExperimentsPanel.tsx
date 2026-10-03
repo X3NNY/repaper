@@ -204,6 +204,11 @@ function ExperimentContent({ item, state, folderPath, focusSource, importanceBus
     if (!focusSource || focusSource.target.type !== 'experiment' || focusSource.target.experimentId !== item.id || sourceRequest.current === focusSource.requestId) return
     sourceRequest.current = focusSource.requestId
     const target = focusSource.target
+    if (target.original) requestAnimationFrame(() => {
+      const content = [...document.querySelectorAll<HTMLElement>('[data-experiment-content-id]')].find(element => element.dataset.experimentContentId === item.id)
+      const original = content?.querySelector<HTMLDetailsElement>('.experiment-legacy-details')
+      if (original) { original.open = true; original.scrollIntoView({ block: 'center' }) }
+    })
     if (target.runId) {
       if (state.runs.some(run => run.id === target.runId)) { setShowRuns(true); setSelectedRunId(target.runId); setFocusedRunId(target.runId) }
       else setSourceError('概况引用的运行记录已不存在：' + target.runId)
@@ -261,7 +266,7 @@ function ExperimentContent({ item, state, folderPath, focusSource, importanceBus
     try { await navigator.clipboard.writeText(prompt); setCopiedOrganize(true); setTimeout(() => setCopiedOrganize(false), 1800) }
     catch { setCopiedOrganize(false) }
   }
-  return <div className="experiment-content">
+  return <div className="experiment-content" data-experiment-content-id={item.id}>
     <div className="experiment-content-kicker">实验 / {item.id}</div>
     <div className="experiment-title-row"><h2>{item.title}</h2><div className="experiment-title-actions">
       <button type="button" className={`experiment-importance-toggle ${item.importance?.value === 'important' ? 'is-important' : ''}`} onClick={onToggleImportance} disabled={importanceBusy} aria-pressed={item.importance?.value === 'important'} title={importanceTitle(item)}>{importanceBusy ? <LoaderCircle size={14} className="spin" /> : <Star size={14} fill={item.importance?.value === 'important' ? 'currentColor' : 'none'} />}{item.importance?.value === 'important' ? '重要' : '标为重要'}</button>
@@ -326,7 +331,11 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
       if (item.importance?.value !== 'important') setImportantOnly(false)
       setCollapsedGroups(previous => { const next = new Set(previous); next.delete(item.groupKey); return next })
     }
-    else setError('概况引用的实验记录已不存在：' + target.experimentId)
+    else if (state.groups.some(group => group.key === target.experimentId)) {
+      setSelection(target.experimentId); setTreeCollapsed(false); setImportantOnly(false)
+      setCollapsedGroups(previous => { const next = new Set(previous); next.delete(target.experimentId); return next })
+    }
+    else setError('引用的实验记录已不存在：' + target.experimentId)
   }, [focusSource, state])
 
   const refresh = useCallback(async () => {

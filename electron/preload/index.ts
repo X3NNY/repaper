@@ -8,6 +8,7 @@ import type { SubmissionAgentLaunch, SubmissionAttempt, SubmissionAttemptDraft, 
 import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspace } from '../../shared/overview'
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../../shared/writing'
 import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
+import type { ProjectSearchOptions, ProjectSearchResponse } from '../../shared/search'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -16,6 +17,8 @@ if (process.platform === 'win32') {
 }
 
 const paperApi = {
+  projectSearch: (folderPath: string, query: string, options?: ProjectSearchOptions): Promise<ProjectSearchResponse> => ipcRenderer.invoke('project:search', folderPath, query, options),
+  projectSearchCancel: (): Promise<void> => ipcRenderer.invoke('project:search:cancel'),
   overviewGet: (folderPath: string, project?: OverviewProject): Promise<OverviewWorkspace> => ipcRenderer.invoke('overview:get', folderPath, project),
   overviewNoteSave: (folderPath: string, draft: OverviewNoteDraft, id?: string): Promise<void> => ipcRenderer.invoke('overview:note:save', folderPath, draft, id),
   overviewNodeEdit: (folderPath: string, id: string, edit: OverviewEdit): Promise<void> => ipcRenderer.invoke('overview:node:edit', folderPath, id, edit),

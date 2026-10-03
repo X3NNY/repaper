@@ -115,7 +115,7 @@ export async function overviewContext(root: string, project?: OverviewProject): 
     sources[sources.length - 1].materials = note.images.map(image => ({ ...image }))
   }
   for (const route of metadata?.routes ?? []) add(`route:${route.id}`, 'route', route.name, route.createdAt, route.createdAt, route,
-    `${route.objective}\n${route.status}`, { type: 'project' })
+    [route.objective, ...route.implementations.flatMap(item => [item.title, item.details, item.repositoryPath, item.status]), route.status].filter(Boolean).join('\n'), { type: 'project' })
   if (metadata?.summary) add('project:summary', 'question', '项目简介', '', '', { title: metadata.title, summary: metadata.summary }, metadata.summary, { type: 'project' }, true)
   for (const version of metadata?.versions ?? []) add(`legacy-version:${version.id}`, 'manuscript', version.label, version.createdAt, version.createdAt, version,
     [version.notes, version.filePath].filter(Boolean).join('\n'), { type: 'project' }, true)

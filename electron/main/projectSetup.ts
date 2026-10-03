@@ -11,6 +11,7 @@ const instructions = [
   '- Run `repaper init` to prepare this project. It maintains this section of AGENTS.md without changing other instructions.',
   '- Read the relevant skill before using it. Run the commands below from the paper folder, or pass `--paper <folder>` when working elsewhere. Outside the app, an installed `repaper-experiments/scripts/repaper.cjs` can also be run with Node.js.',
   '- Fetch current content from source files or the CLI when the task needs it. This file describes the interfaces; manuscript text, experiment results, and submission history belong in their own stores.',
+  '- Find manuscript passages, experiment records, original reviews, and saved thinking with `repaper search <text> --json`, optionally `--kind manuscript|experiment|submission|overview`. Search results provide snippets and source targets, not the complete evidence. Open the target and preserve the distinction between original wording and AI summaries. Search only covers the reported local scope; inspect its warnings and do not infer absence from a skipped file.',
   '',
   '### Read or edit the manuscript',
   '',

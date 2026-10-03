@@ -22,6 +22,8 @@ import { editOverviewNode, loadOverview, overviewDirectory, overviewMaterial, sa
 import { OverviewAgentManager } from './overviewAgent'
 import type { SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
 import { createSubmissionSnapshot, exportSubmissionSnapshotZip, inspectSubmissionSnapshotCommit, listSubmissionSnapshots, submissionSnapshotFilePath } from './submissionSnapshots'
+import type { ProjectSearchOptions } from '../../shared/search'
+import { searchProject } from './projectSearch'
 
 let mainWindow: BrowserWindow | null = null
 let saveQueue: Promise<void> = Promise.resolve()
@@ -40,6 +42,7 @@ const submissionWatchers = new Map<string, FSWatcher[]>()
 const submissionTimers = new Map<string, NodeJS.Timeout>()
 const submissionLaunches = new Map<string, Promise<SubmissionAgentLaunch>>()
 const maxSubmissionImageBytes = 25 * 1024 * 1024
+const searchRequests = new Map<number, AbortController>()
 
 function watchOverview(folder: string): void {
   const watchers = overviewWatchers.get(folder) ?? new Map<string, FSWatcher>()
@@ -433,6 +436,21 @@ app.whenReady().then(async () => {
     watchOverview(folder); watchExperiments(folder); watchSubmissions(folder)
     return state
   })
+  ipcMain.handle('project:search', async (event, folderPath: string, query: string, options?: ProjectSearchOptions) => {
+    searchRequests.get(event.sender.id)?.abort()
+    const controller = new AbortController()
+    searchRequests.set(event.sender.id, controller)
+    try {
+      const folder = await requireFolder(folderPath)
+      controller.signal.throwIfAborted()
+      return await searchProject(folder, query, { ...options, signal: controller.signal })
+    }
+    finally { if (searchRequests.get(event.sender.id) === controller) searchRequests.delete(event.sender.id) }
+  })
+  ipcMain.handle('project:search:cancel', event => {
+    searchRequests.get(event.sender.id)?.abort()
+    searchRequests.delete(event.sender.id)
+  })
   ipcMain.handle('overview:note:save', async (_event, folderPath: string, draft: OverviewNoteDraft, id?: string) =>
     saveOverviewNote(await requireFolder(folderPath), draft, id))
   ipcMain.handle('overview:node:edit', async (_event, folderPath: string, id: string, edit: OverviewEdit) =>
@@ -547,6 +565,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  for (const controller of searchRequests.values()) controller.abort()
   for (const watchers of overviewWatchers.values()) for (const watcher of watchers.values()) watcher.close()
   for (const timer of overviewTimers.values()) clearTimeout(timer)
   for (const watchers of experimentWatchers.values()) watchers.forEach((item) => item.close())

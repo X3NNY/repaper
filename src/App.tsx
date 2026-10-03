@@ -19,6 +19,8 @@ import ExperimentsPanel from './components/ExperimentsPanel'
 import SubmissionsPanel from './components/SubmissionsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import OverviewPanel from './components/OverviewPanel'
+import ProjectSearch from './components/ProjectSearch'
+import type { ProjectSearchTarget } from '../shared/search'
 import {
   createId, createSamplePaper, formatDate, loadWorkspace, mostRecentPaper,
   paperStatusLabels, saveWorkspace
@@ -92,7 +94,22 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [notice, setNotice] = useState('')
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null)
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false)
   const saveIndex = useRef(0)
+
+  useEffect(() => { setProjectSearchOpen(false) }, [view.kind, view.kind === 'paper' ? view.id : null])
+  useEffect(() => {
+    if (view.kind !== 'paper') return
+    const open = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'k') return
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+      event.preventDefault()
+      event.stopPropagation()
+      setProjectSearchOpen(true)
+    }
+    document.addEventListener('keydown', open, true)
+    return () => document.removeEventListener('keydown', open, true)
+  }, [view.kind])
 
   useEffect(() => {
     let active = true
@@ -301,6 +318,7 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-context"><span className="topbar-context-icon"><TopbarIcon size={18} /></span><span className="topbar-context-copy"><strong>{topbarPage.label}</strong><small>{topbarPage.detail}</small></span></div>
           <div className="topbar-right" ref={setToolbarTarget}>
+            {selectedPaper ? <button className="icon-button subtle" title="搜索项目（Ctrl / ⌘ K）" aria-label="搜索项目" onClick={() => { if (!document.querySelector('[role="dialog"][aria-modal="true"]')) setProjectSearchOpen(true) }}><Search size={18} /></button> : null}
             {!selectedPaper && view.kind !== 'settings' ? <label className="global-search"><Search size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); setView({ kind: 'library' }) }} placeholder="搜索论文、标签或内容" aria-label="搜索论文" /><kbd>⌕</kbd></label> : null}
             {!selectedPaper && view.kind !== 'settings' ? <button className="button button-primary" onClick={() => setDialog({ kind: 'paper' })}><Plus size={15} /> 新建论文</button> : null}
             {selectedPaper && tab === 'overview' ? <button className="button button-light" onClick={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })}>编辑论文</button> : null}
@@ -319,7 +337,7 @@ export default function App() {
           ) : null}
           {view.kind === 'settings' ? <SettingsPanel toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} onDefaultAgentChange={(provider) => setWorkspace((current) => current && ({ ...current, defaultAgent: provider, agentPermissionMode }))} permissionMode={agentPermissionMode} onPermissionModeChange={(mode) => setWorkspace((current) => current && ({ ...current, agentPermissionMode: mode }))} /> : null}
           {view.kind === 'paper' && selectedPaper ? (
-            <PaperDetail onManageTemplates={() => setView({ kind: 'settings' })} paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={agentPermissionMode} />
+            <PaperDetail searchOpen={projectSearchOpen} onCloseSearch={() => setProjectSearchOpen(false)} onManageTemplates={() => setView({ kind: 'settings' })} paper={selectedPaper} tab={tab} onTab={setTab} onEdit={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} onDelete={() => deletePaper(selectedPaper)} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={agentPermissionMode} />
           ) : null}
           {view.kind === 'paper' && !selectedPaper ? <EmptySection icon={<FileText size={26} />} title="找不到这篇论文" description="它可能已经被删除。" action={<button className="button button-primary" onClick={showLibrary}>返回全部论文</button>} /> : null}
         </div>
@@ -397,15 +415,34 @@ function Library({ papers, query, filter, onFilter, onCreate, onOpen, onSample }
   </>
 }
 
-function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, toolbarTarget, defaultAgent, permissionMode }: {
+function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, toolbarTarget, defaultAgent, permissionMode, searchOpen, onCloseSearch }: {
   paper: Paper; tab: PaperTab; onTab: (tab: PaperTab) => void;
   onEdit: () => void; onDelete: () => void; onManageTemplates: () => void; toolbarTarget: HTMLDivElement | null; defaultAgent: SessionProvider;
   permissionMode: AgentPermissionMode
+  searchOpen: boolean
+  onCloseSearch: () => void
 }) {
   const [agentLaunch, setAgentLaunch] = useState<{ terminalId: string } | null>(null)
   const [sourceFocus, setSourceFocus] = useState<OverviewFocus | null>(null)
+  const [searchFocus, setSearchFocus] = useState<{ target: ProjectSearchTarget; requestId: number } | null>(null)
   const focusRequest = useRef(0)
-  useEffect(() => { setAgentLaunch(null); setSourceFocus(null) }, [paper.id])
+  useEffect(() => { setAgentLaunch(null); setSourceFocus(null); setSearchFocus(null) }, [paper.id])
+
+  function openSearchTarget(target: ProjectSearchTarget): void {
+    const requestId = ++focusRequest.current
+    if (target.type === 'experiment_group') {
+      setSourceFocus({ target: { type: 'experiment', experimentId: target.groupKey }, requestId })
+      onTab('experiments')
+      return
+    }
+    if (target.type === 'writing' || target.type === 'experiment' || target.type === 'submission') {
+      setSourceFocus({ target, requestId })
+      onTab(target.type === 'writing' ? 'writing' : target.type === 'experiment' ? 'experiments' : 'submissions')
+    } else {
+      setSearchFocus({ target, requestId })
+      onTab('overview')
+    }
+  }
 
   async function organizeOverview(): Promise<void> {
     if (!paper.folderPath || !window.paperApi) throw new Error('请先关联论文目录，并在桌面应用中使用 Agent。')
@@ -434,11 +471,12 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, t
   }
 
   return <>
+    {searchOpen ? <ProjectSearch paper={paper} onOpenTarget={openSearchTarget} onClose={onCloseSearch} /> : null}
     {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
     {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={permissionMode} focusTerminalId={agentLaunch?.terminalId ?? null} /> : null}
     {tab === 'writing' ? <WritingPanel onManageTemplates={onManageTemplates} folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
     {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
     {tab === 'submissions' ? <SubmissionsPanel paper={paper} onChooseFolder={onEdit} onOpenSessions={() => onTab('sessions')} onOrganize={organizeSubmission} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
-    {tab === 'overview' ? <OverviewPanel paper={paper} onTab={onTab} toolbarTarget={toolbarTarget} onChooseFolder={onEdit} onOrganize={organizeOverview} onOpenSource={openOverviewSource} /> : null}
+    {tab === 'overview' ? <OverviewPanel focusSearch={searchFocus} onSearchFocused={() => setSearchFocus(null)} paper={paper} onTab={onTab} toolbarTarget={toolbarTarget} onChooseFolder={onEdit} onOrganize={organizeOverview} onOpenSource={openOverviewSource} /> : null}
   </>
 }

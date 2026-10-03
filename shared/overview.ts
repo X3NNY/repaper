@@ -5,9 +5,9 @@ import type { SessionProvider } from './sessions'
 export type OverviewKind = 'question' | 'claim' | 'finding' | 'decision' | 'route' | 'experiment' | 'manuscript' | 'submission' | 'review' | 'note' | 'plan'
 export type OverviewRelation = 'supports' | 'limits' | 'challenges' | 'responds' | 'motivates' | 'supersedes' | 'tests' | 'contains' | 'submitted' | 'revises'
 export type OverviewTarget =
-  | { type: 'experiment'; experimentId: string; runId?: string; revisionId?: string }
-  | { type: 'submission'; submissionId: string; eventId?: string; reviewId?: string }
-  | { type: 'writing'; path?: string; commit?: string; line?: number }
+  | { type: 'experiment'; experimentId: string; runId?: string; revisionId?: string; original?: boolean }
+  | { type: 'submission'; submissionId: string; eventId?: string; reviewId?: string; sourceId?: string }
+  | { type: 'writing'; path?: string; commit?: string; line?: number; column?: number }
   | { type: 'note'; noteId: string }
   | { type: 'project' }
 
