@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { Submission as LegacySubmission, WorkspaceData } from '../../shared/model'
 import type { CodexThreadPage } from '../../shared/codex'
 import type { AgentPermissionMode, SessionPage, SessionProvider, SessionTerminalEvent, SessionTerminalInfo, SessionTerminalSnapshot } from '../../shared/sessions'
@@ -9,6 +9,7 @@ import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspac
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../../shared/writing'
 import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
 import type { ProjectSearchOptions, ProjectSearchResponse } from '../../shared/search'
+import type { LiteratureAnnotation, LiteratureAnnotationDraft, LiteratureDocument, LiteratureImportResult, LiteratureWorkspace } from '../../shared/literature'
 
 if (process.platform === 'win32') {
   window.addEventListener('DOMContentLoaded', () => {
@@ -17,6 +18,30 @@ if (process.platform === 'win32') {
 }
 
 const paperApi = {
+  literatureList: (folderPath: string): Promise<LiteratureWorkspace> => ipcRenderer.invoke('literature:list', folderPath),
+  literatureImport: (folderPath: string): Promise<LiteratureImportResult | null> => ipcRenderer.invoke('literature:import', folderPath),
+  literatureImportFiles: async (folderPath: string, files: File[]): Promise<LiteratureImportResult> => {
+    if (!Array.isArray(files) || files.length < 1 || files.length > 20) throw new Error('一次请拖入 1–20 个本地 PDF 文件。')
+    const paths: string[] = []
+    for (const file of files) {
+      let path: string
+      try { path = webUtils.getPathForFile(file) }
+      catch { throw new Error('只支持拖入实际的本地 PDF 文件。') }
+      if (!path) throw new Error('拖入的文件没有本地路径，不能导入虚拟文件。请从文件管理器拖入 PDF。')
+      paths.push(path)
+    }
+    return ipcRenderer.invoke('literature:import:files', folderPath, paths)
+  },
+  literatureReadPdf: (folderPath: string, id: string): Promise<Uint8Array> => ipcRenderer.invoke('literature:pdf', folderPath, id),
+  literatureRename: (folderPath: string, id: string, title: string): Promise<LiteratureDocument> => ipcRenderer.invoke('literature:rename', folderPath, id, title),
+  literatureAnnotations: (folderPath: string, id: string): Promise<LiteratureAnnotation[]> => ipcRenderer.invoke('literature:annotations', folderPath, id),
+  literatureSaveAnnotation: (folderPath: string, id: string, draft: LiteratureAnnotationDraft, annotationId?: string): Promise<LiteratureAnnotation> => ipcRenderer.invoke('literature:annotation:save', folderPath, id, draft, annotationId),
+  literatureDeleteAnnotation: (folderPath: string, id: string, annotationId: string, expectedRevision: number): Promise<void> => ipcRenderer.invoke('literature:annotation:delete', folderPath, id, annotationId, expectedRevision),
+  onLiteratureChanged: (callback: (folderPath: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, folderPath: string) => callback(folderPath)
+    ipcRenderer.on('literature:changed', listener)
+    return () => ipcRenderer.removeListener('literature:changed', listener)
+  },
   projectSearch: (folderPath: string, query: string, options?: ProjectSearchOptions): Promise<ProjectSearchResponse> => ipcRenderer.invoke('project:search', folderPath, query, options),
   projectSearchCancel: (): Promise<void> => ipcRenderer.invoke('project:search:cancel'),
   overviewGet: (folderPath: string, project?: OverviewProject): Promise<OverviewWorkspace> => ipcRenderer.invoke('overview:get', folderPath, project),

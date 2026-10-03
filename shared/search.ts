@@ -1,11 +1,12 @@
 import type { Paper } from './model'
 
-export type ProjectSearchKind = 'manuscript' | 'experiment' | 'submission' | 'overview' | 'route' | 'revision' | 'project'
+export type ProjectSearchKind = 'manuscript' | 'literature' | 'experiment' | 'submission' | 'overview' | 'route' | 'revision' | 'project'
 export type ProjectSearchField = 'title' | 'content' | 'summary' | 'design' | 'settings' | 'results' | 'conclusion' | 'original' | 'score' | 'notes' | 'objective' | 'task' | 'decision' | 'url'
 export type ProjectSearchProvenance = 'original' | 'ai_summary' | 'record' | 'legacy_summary'
 
 export type ProjectSearchTarget =
   | { type: 'writing'; path: string; line: number; column: number }
+  | { type: 'literature'; documentId: string; annotationId?: string; page?: number }
   | { type: 'experiment'; experimentId: string; groupKey?: string; revisionId?: string; runId?: string; original?: boolean }
   | { type: 'experiment_group'; groupKey: string }
   | { type: 'submission'; submissionId: string; eventId?: string; reviewId?: string; sourceId?: string; legacy?: boolean }

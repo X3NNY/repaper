@@ -1,0 +1,72 @@
+.literature-pdf-reader { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; overflow: hidden; background: #edf1eb; }
+.literature-pdf-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; flex: 0 0 auto; min-height: 48px; padding: 7px 12px; border-bottom: 1px solid #dce5d9; background: #f9fbf7; color: #5f7a66; font-size: 11px; }
+.literature-pdf-heading, .literature-pdf-controls { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.literature-pdf-heading > span { margin-right: 5px; font-weight: 600; }
+.literature-pdf-toolbar button, .literature-pdf-selection-actions > button, .literature-pdf-note-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 5px 8px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #54765d; font-size: 11px; white-space: nowrap; }
+.literature-pdf-toolbar button:hover, .literature-pdf-selection-actions > button:hover { border-color: #d2e2cb; background: #eaf2e5; color: var(--green); }
+.literature-pdf-toolbar button:disabled, .literature-pdf-selection-actions > button:disabled, .literature-pdf-note-editor button:disabled { opacity: .45; cursor: default; }
+.literature-pdf-toolbar .literature-pdf-icon-button { width: 29px; padding: 0; }
+.literature-pdf-controls input { width: 39px; height: 28px; padding: 3px 5px; border: 1px solid #d8e4d1; border-radius: 4px; background: #fff; color: #3d6346; font-size: 11px; text-align: center; }
+.literature-pdf-controls i { width: 1px; height: 17px; margin: 0 4px; background: #d9e3d5; }
+.literature-pdf-zoom { min-width: 36px; text-align: center; }
+.literature-pdf-scroll { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
+.literature-pdf-scroll:focus-visible { outline-offset: -3px; }
+.literature-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; width: max-content; min-width: 100%; padding: 16px 16px 24px; }
+.literature-pdf-sheet { flex: 0 0 auto; }
+.literature-pdf-page { position: relative; overflow: hidden; background: #fff; box-shadow: 0 3px 16px #253e2821; isolation: isolate; }
+.literature-pdf-page > canvas { display: block; width: 100%; height: 100%; }
+.literature-pdf-text-host { position: absolute; inset: 0; z-index: 2; }
+/* PDF.js 6 TextLayer uses these scale variables for its generated span geometry. */
+.literature-pdf-text-layer { --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); --scale-round-x: 1px; --scale-round-y: 1px; position: absolute; inset: 0; overflow: clip; color-scheme: only light; text-align: initial; opacity: 1; line-height: 1; letter-spacing: normal; word-spacing: normal; text-size-adjust: none; -webkit-text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; }
+.literature-pdf-text-layer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0% 0%; user-select: text; }
+.literature-pdf-text-layer > :not(.markedContent), .literature-pdf-text-layer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; --scale-x: 1; --rotate: 0deg; font-size: calc(var(--text-scale-factor) * var(--font-height)); transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.literature-pdf-text-layer .markedContent { display: contents; }
+.literature-pdf-text-layer span[role="img"] { user-select: none; cursor: default; }
+.literature-pdf-text-layer ::selection { background: #97b9dc70; color: transparent; }
+.literature-pdf-text-layer br::selection { background: transparent; }
+.literature-pdf-text-layer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.literature-pdf-text-layer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.literature-pdf-text-layer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+.literature-pdf-annotations { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
+.literature-pdf-mark { position: absolute; display: block; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 2px; pointer-events: none; background: var(--literature-mark-fill); mix-blend-mode: multiply; }
+.literature-pdf-mark.underline { border-bottom: 2px solid var(--literature-mark-line); border-radius: 0; background: transparent; }
+.literature-pdf-mark.note { border-bottom: 1px dotted var(--literature-mark-line); }
+.literature-pdf-mark.selected { outline: 2px solid #477859; outline-offset: 1px; }
+.literature-pdf-mark:focus-visible { outline: 2px solid #477859; outline-offset: 2px; }
+.literature-pdf-reader .color-yellow { --literature-mark-fill: #f2d76766; --literature-mark-line: #c39a1c; --literature-color: #ebce60; }
+.literature-pdf-reader .color-green { --literature-mark-fill: #9bcc9066; --literature-mark-line: #5d9153; --literature-color: #99bd82; }
+.literature-pdf-reader .color-blue { --literature-mark-fill: #92bfe766; --literature-mark-line: #608eb5; --literature-color: #87b5d9; }
+.literature-pdf-reader .color-pink { --literature-mark-fill: #e6a9c366; --literature-mark-line: #b5708e; --literature-color: #daa0b8; }
+.literature-pdf-page-note { position: absolute; right: 10px; display: grid; place-items: center; width: 25px; height: 25px; padding: 0; border: 1px solid var(--literature-mark-line); border-radius: 5px; background: #fffffff0; color: var(--literature-mark-line); pointer-events: auto; box-shadow: 0 2px 5px #20362216; }
+.literature-pdf-page-note:hover, .literature-pdf-page-note.selected { outline: 2px solid #477859; outline-offset: 1px; background: #edf4e8; }
+.literature-pdf-page-caption { display: flex; justify-content: center; align-items: baseline; gap: 10px; padding-top: 7px; color: #889c89; font-size: 10px; user-select: none; }
+.literature-pdf-page-caption span { color: #759277; }
+.literature-pdf-page-error { position: absolute; z-index: 4; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; color: #a76550; background: #fffdf7e8; font-size: 12px; }
+.literature-pdf-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 100%; padding: 24px; color: #819780; font-size: 12px; }
+.literature-pdf-state strong { color: #52735b; font-size: 15px; font-weight: 500; }
+.literature-pdf-state.error { color: #a76550; }
+.literature-pdf-selection-tools, .literature-pdf-note-editor { position: absolute; z-index: 10; max-width: calc(100% - 16px); padding: 7px; border: 1px solid #cfdfc9; border-radius: 8px; background: #fffffff7; box-shadow: 0 6px 22px #28452a25; color: #45624a; font-size: 11px; }
+.literature-pdf-selection-tools { max-height: calc(100% - 70px); overflow: auto; padding-right: 26px; }
+.literature-pdf-selection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.literature-pdf-color-picker { display: flex; align-items: center; gap: 5px; padding: 3px 5px; }
+.literature-pdf-color { position: relative; flex: 0 0 auto; width: 17px; height: 17px; padding: 0; border: 1px solid #ffffffb0; border-radius: 50%; background: var(--literature-color); box-shadow: 0 0 0 1px #74856722; }
+.literature-pdf-color[aria-pressed="true"] { box-shadow: 0 0 0 2px #447556; }
+.literature-pdf-color:disabled { opacity: .5; }
+.literature-pdf-close { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; color: #81917c; background: transparent; }
+.literature-pdf-close:hover { background: #edf2e8; color: #3e704c; }
+.literature-pdf-selection-tools > .literature-pdf-close { position: absolute; top: 10px; right: 4px; }
+.literature-pdf-selection-issue, .literature-pdf-save-error { margin: 5px 7px; max-width: 280px; color: #9a6a46; font-size: 11px; line-height: 1.7; white-space: normal; overflow-wrap: anywhere; }
+.literature-pdf-save-status { margin: 3px 7px 5px; color: #6b8467; font-size: 10px; }
+.literature-pdf-retry-quote { display: -webkit-box; max-width: 280px; margin: 5px 7px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; border-left: 2px solid #cadcc0; padding-left: 7px; color: #74896e; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.literature-pdf-retry { min-height: 28px; margin: 3px 7px; padding: 4px 9px; border: 1px solid #cfdfc9; border-radius: 5px; color: #346546; background: #edf4e8; font-size: 11px; }
+.literature-pdf-retry:disabled { opacity: .45; }
+.literature-pdf-note-editor { width: 360px; max-height: calc(100% - 70px); overflow: auto; padding: 12px; }
+.literature-pdf-note-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.literature-pdf-note-heading strong { font-size: 12px; font-weight: 600; }
+.literature-pdf-note-editor blockquote { max-height: 58px; margin: 0 0 9px; overflow: auto; border-left: 2px solid #cadcc0; padding-left: 9px; color: #7e8f79; font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.literature-pdf-note-editor textarea { width: 100%; min-height: 85px; max-height: 160px; padding: 9px 10px; resize: vertical; border: 1px solid #d6e2cf; border-radius: 6px; background: #fbfcf9; color: #3a6044; font-size: 12px; line-height: 1.7; }
+.literature-pdf-note-editor textarea::placeholder { color: #99aa91; }
+.literature-pdf-note-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; }
+.literature-pdf-note-actions > .literature-pdf-save { min-height: 31px; padding: 6px 12px; background: #e8f1e2; color: #346546; border-color: #d2e1c9; }
+.literature-pdf-note-actions > .literature-pdf-save:hover { background: #dcebd4; }
+@media (max-width: 1100px) { .literature-pdf-toolbar { gap: 4px; padding: 6px 8px; } .literature-pdf-controls { gap: 2px; } .literature-pdf-controls > button:last-child span { display: none; } }

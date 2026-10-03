@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowLeft, ArrowRight, BookOpenText, Check, ChevronRight,
   CircleAlert, FileText, FlaskConical, FolderKanban, FolderOpen,
@@ -27,12 +27,14 @@ import {
 } from './lib/workspace'
 
 type View = { kind: 'dashboard' } | { kind: 'library' } | { kind: 'settings' } | { kind: 'paper'; id: string }
-type PaperTab = 'overview' | 'sessions' | 'writing' | 'experiments' | 'submissions'
+type PaperTab = 'overview' | 'sessions' | 'literature' | 'writing' | 'experiments' | 'submissions'
 type SaveState = 'saved' | 'saving' | 'error'
+const LiteraturePanel = lazy(() => import('./components/LiteraturePanel'))
 
 const tabs: { id: PaperTab; label: string; detail: string; icon: LucideIcon }[] = [
   { id: 'overview', label: '概况', detail: '研究演化 · 论点与证据', icon: LayoutDashboard },
   { id: 'sessions', label: '会话', detail: 'Codex · Claude Code', icon: TerminalSquare },
+  { id: 'literature', label: '文献', detail: 'PDF 阅读、标注与笔记', icon: BookOpenText },
   { id: 'writing', label: '写作', detail: '.paper/ · 编译与版本', icon: FileText },
   { id: 'experiments', label: '实验', detail: '实验组与运行记录', icon: FlaskConical },
   { id: 'submissions', label: '投稿', detail: '投稿历程与审稿材料', icon: Send }
@@ -328,7 +330,7 @@ export default function App() {
 
         {saveState === 'error' ? <div className="save-banner"><CircleAlert size={17} /> 自动保存失败：{saveError}<button onClick={() => setSaveRetry((value) => value + 1)}>重试保存</button></div> : null}
 
-        <div className={`page-content ${selectedPaper ? 'paper-page' : ''} ${selectedPaper && tab === 'sessions' ? 'sessions-page' : ''} ${selectedPaper && tab === 'writing' ? 'writing-page' : ''} ${selectedPaper && tab === 'experiments' ? 'experiments-page' : ''} ${selectedPaper && tab === 'submissions' ? 'submissions-page' : ''}`} key={view.kind === 'paper' ? view.id : view.kind}>
+        <div className={`page-content ${selectedPaper ? 'paper-page' : ''} ${selectedPaper && tab === 'sessions' ? 'sessions-page' : ''} ${selectedPaper && tab === 'literature' ? 'literature-page' : ''} ${selectedPaper && tab === 'writing' ? 'writing-page' : ''} ${selectedPaper && tab === 'experiments' ? 'experiments-page' : ''} ${selectedPaper && tab === 'submissions' ? 'submissions-page' : ''}`} key={view.kind === 'paper' ? view.id : view.kind}>
           {view.kind === 'dashboard' ? (
             <Dashboard papers={sortedPapers} onCreate={() => setDialog({ kind: 'paper' })} onSample={addSample} onOpen={showPaper} onLibrary={showLibrary} />
           ) : null}
@@ -425,11 +427,18 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, t
   const [agentLaunch, setAgentLaunch] = useState<{ terminalId: string } | null>(null)
   const [sourceFocus, setSourceFocus] = useState<OverviewFocus | null>(null)
   const [searchFocus, setSearchFocus] = useState<{ target: ProjectSearchTarget; requestId: number } | null>(null)
+  const [literatureFocus, setLiteratureFocus] = useState<{ documentId: string; annotationId?: string; page?: number; requestId: number } | null>(null)
   const focusRequest = useRef(0)
-  useEffect(() => { setAgentLaunch(null); setSourceFocus(null); setSearchFocus(null) }, [paper.id])
+  useEffect(() => { setAgentLaunch(null); setSourceFocus(null); setSearchFocus(null); setLiteratureFocus(null) }, [paper.id])
+  useEffect(() => { if (tab !== 'literature') setLiteratureFocus(null) }, [tab])
 
   function openSearchTarget(target: ProjectSearchTarget): void {
     const requestId = ++focusRequest.current
+    if (target.type === 'literature') {
+      setLiteratureFocus({ documentId: target.documentId, annotationId: target.annotationId, page: target.page, requestId })
+      onTab('literature')
+      return
+    }
     if (target.type === 'experiment_group') {
       setSourceFocus({ target: { type: 'experiment', experimentId: target.groupKey }, requestId })
       onTab('experiments')
@@ -474,6 +483,7 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, t
     {searchOpen ? <ProjectSearch paper={paper} onOpenTarget={openSearchTarget} onClose={onCloseSearch} /> : null}
     {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
     {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={permissionMode} focusTerminalId={agentLaunch?.terminalId ?? null} /> : null}
+    {tab === 'literature' ? <Suspense fallback={<EmptySection icon={<BookOpenText size={26} />} title="正在载入文献页…" description="" action={null} />}><LiteraturePanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={literatureFocus} /></Suspense> : null}
     {tab === 'writing' ? <WritingPanel onManageTemplates={onManageTemplates} folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
     {tab === 'experiments' ? <ExperimentsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}
     {tab === 'submissions' ? <SubmissionsPanel paper={paper} onChooseFolder={onEdit} onOpenSessions={() => onTab('sessions')} onOrganize={organizeSubmission} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}

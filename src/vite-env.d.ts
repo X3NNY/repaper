@@ -10,10 +10,20 @@ import type { OverviewEdit, OverviewNoteDraft, OverviewProject, OverviewWorkspac
 import type { WritingTemplateSwitchPreview, WritingTemplateSwitchResult } from '../shared/writing'
 import type { SubmissionSnapshot, SubmissionSnapshotCommitInspection, SubmissionSnapshotDraft } from '../shared/submissionSnapshots'
 import type { ProjectSearchOptions, ProjectSearchResponse } from '../shared/search'
+import type { LiteratureAnnotation, LiteratureAnnotationDraft, LiteratureDocument, LiteratureImportResult, LiteratureWorkspace } from '../shared/literature'
 
 declare global {
   interface Window {
     paperApi?: {
+      literatureList: (folderPath: string) => Promise<LiteratureWorkspace>
+      literatureImport: (folderPath: string) => Promise<LiteratureImportResult | null>
+      literatureImportFiles: (folderPath: string, files: File[]) => Promise<LiteratureImportResult>
+      literatureReadPdf: (folderPath: string, id: string) => Promise<Uint8Array>
+      literatureRename: (folderPath: string, id: string, title: string) => Promise<LiteratureDocument>
+      literatureAnnotations: (folderPath: string, id: string) => Promise<LiteratureAnnotation[]>
+      literatureSaveAnnotation: (folderPath: string, id: string, draft: LiteratureAnnotationDraft, annotationId?: string) => Promise<LiteratureAnnotation>
+      literatureDeleteAnnotation: (folderPath: string, id: string, annotationId: string, expectedRevision: number) => Promise<void>
+      onLiteratureChanged: (callback: (folderPath: string) => void) => () => void
       projectSearch: (folderPath: string, query: string, options?: ProjectSearchOptions) => Promise<ProjectSearchResponse>
       projectSearchCancel: () => Promise<void>
       overviewGet: (folderPath: string, project?: OverviewProject) => Promise<OverviewWorkspace>

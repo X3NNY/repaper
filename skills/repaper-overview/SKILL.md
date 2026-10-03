@@ -2,7 +2,7 @@
 name: repaper-overview
 description: Read and maintain a re:paper project's research journey, claims, evidence, decisions, stopped routes, and submission-driven revisions. Use when organizing the overview or explaining how a paper's ideas and conclusions evolved.
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # re:paper research journey

@@ -2,15 +2,16 @@ import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import { createHash } from 'node:crypto'
 import { lstat, open, opendir, realpath } from 'node:fs/promises'
 import type { Dirent, Stats } from 'node:fs'
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type {
   ProjectSearchField, ProjectSearchKind, ProjectSearchOptions, ProjectSearchProvenance,
   ProjectSearchResponse, ProjectSearchResult, ProjectSearchTarget, ProjectSearchWarning
 } from '../../shared/search'
+import type { LiteratureAnnotation, LiteratureDocument, LiteratureRect } from '../../shared/literature'
 
 export interface ProjectSearchReadOptions extends ProjectSearchOptions { signal?: AbortSignal }
 
-const kinds: ProjectSearchKind[] = ['manuscript', 'experiment', 'submission', 'overview', 'route', 'revision', 'project']
+const kinds: ProjectSearchKind[] = ['manuscript', 'literature', 'experiment', 'submission', 'overview', 'route', 'revision', 'project']
 const fields: ProjectSearchField[] = ['title', 'content', 'summary', 'design', 'settings', 'results', 'conclusion', 'original', 'score', 'notes', 'objective', 'task', 'decision', 'url']
 const provenances: ProjectSearchProvenance[] = ['original', 'ai_summary', 'record', 'legacy_summary']
 const manuscriptExtensions = new Set(['.tex', '.bib', '.sty', '.cls', '.bst', '.txt', '.md', '.json', '.yaml', '.yml'])
@@ -339,6 +340,134 @@ async function jsonRecords(reader: SearchReader, path: string, consume: (value: 
   }
 }
 
+const literatureUuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+const literatureDocumentIdPattern = new RegExp(`^ld_${literatureUuid}$`)
+const literatureAnnotationIdPattern = new RegExp(`^la_${literatureUuid}$`)
+
+function literatureText(value: unknown, maxBytes: number, required = false): value is string {
+  return typeof value === 'string' && !value.includes('\0') && Buffer.byteLength(value, 'utf8') <= maxBytes && (!required || Boolean(value.trim()))
+}
+
+function literatureTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 64 && Number.isFinite(Date.parse(value))
+}
+
+// Mirror literature.ts's read contract without invoking its store or initializing directories.
+function literatureDocument(value: unknown): LiteratureDocument | null {
+  const item = record(value)
+  if (!item || typeof item.id !== 'string' || !literatureDocumentIdPattern.test(item.id) ||
+    !literatureText(item.title, 2048, true) || !literatureText(item.originalName, 1024, true) ||
+    item.originalName !== basename(item.originalName) || /[\\/]/.test(item.originalName) || item.pdfPath !== `pdfs/${item.id}.pdf` ||
+    typeof item.size !== 'number' || !Number.isSafeInteger(item.size) || item.size < 8 || item.size > 100 * MiB ||
+    typeof item.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(item.sha256) ||
+    !literatureTimestamp(item.createdAt) || !literatureTimestamp(item.updatedAt)) return null
+  return { id: item.id, title: item.title, originalName: item.originalName, pdfPath: `pdfs/${item.id}.pdf`,
+    size: item.size, sha256: item.sha256, createdAt: item.createdAt, updatedAt: item.updatedAt }
+}
+
+function literatureRect(value: unknown): LiteratureRect | null {
+  const item = record(value)
+  if (!item) return null
+  const { x, y, width, height } = item
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number' ||
+    ![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0 ||
+    x > 1 || y > 1 || width > 1 || height > 1 || x + width > 1 || y + height > 1) return null
+  return { x, y, width, height }
+}
+
+function literatureAnnotation(value: unknown, documentId: string): LiteratureAnnotation | null {
+  const item = record(value)
+  if (!item || typeof item.id !== 'string' || !literatureAnnotationIdPattern.test(item.id) || item.documentId !== documentId ||
+    item.expectedRevision !== undefined || (item.kind !== 'highlight' && item.kind !== 'underline' && item.kind !== 'note') ||
+    (item.color !== 'yellow' && item.color !== 'green' && item.color !== 'blue' && item.color !== 'pink') ||
+    typeof item.page !== 'number' || !Number.isSafeInteger(item.page) || item.page < 1 || item.page > 1_000_000 ||
+    !Array.isArray(item.rects) || item.rects.length > 200 || !literatureText(item.quote, 64 * 1024) || !literatureText(item.note, 64 * 1024) ||
+    typeof item.revision !== 'number' || !Number.isSafeInteger(item.revision) || item.revision < 1 ||
+    !literatureTimestamp(item.createdAt) || !literatureTimestamp(item.updatedAt)) return null
+  const rects: LiteratureRect[] = []
+  for (const value of item.rects) {
+    const rect = literatureRect(value)
+    if (!rect) return null
+    rects.push(rect)
+  }
+  if (item.kind === 'note' ? !item.note.trim() : !item.quote.trim() || !rects.length) return null
+  const draft: Pick<LiteratureAnnotation, 'kind' | 'page' | 'quote' | 'note' | 'color' | 'rects'> = {
+    kind: item.kind, page: item.page, quote: item.quote, note: item.note, color: item.color, rects
+  }
+  if (Buffer.byteLength(JSON.stringify(draft), 'utf8') > 128 * 1024) return null
+  return { ...draft, id: item.id, documentId, revision: item.revision, createdAt: item.createdAt, updatedAt: item.updatedAt }
+}
+
+async function literature(reader: SearchReader): Promise<void> {
+  if (!reader.wants('literature') || reader.stopped) return
+  const sourcePath = '.repaper/literature/state.json'
+  const state = await reader.json(sourcePath, true)
+  if (!state) return
+  if (state.schemaVersion !== 1 || !Array.isArray(state.documents) || state.documents.length > 10_000) {
+    reader.warn('invalid', sourcePath, '文献记录格式不受支持，未纳入搜索。')
+    return
+  }
+  const documents: LiteratureDocument[] = []
+  const documentIds = new Set<string>()
+  const hashes = new Set<string>()
+  for (const value of state.documents) {
+    reader.check()
+    const item = literatureDocument(value)
+    if (!item || documentIds.has(item.id) || hashes.has(item.sha256)) {
+      reader.warn('invalid', sourcePath, '文献索引含有损坏或重复的记录，未纳入搜索。')
+      return
+    }
+    documentIds.add(item.id)
+    hashes.add(item.sha256)
+    documents.push(item)
+    if (documents.length % 64 === 0) { await yieldToEventLoop(); reader.check() }
+  }
+  for (const item of documents) {
+    reader.check()
+    if (reader.stopped) break
+    const documentId = item.id
+    const document: SearchDocument = { id: `literature:${documentId}`, kind: 'literature', title: item.title,
+      sourcePath, target: { type: 'literature', documentId } }
+    await reader.add(document, 'title', item.title)
+    if (item.originalName !== item.title) await reader.add(document, 'title', item.originalName, 'record', 'original-name')
+    if (!reader.accepts('original', 'original') && !reader.accepts('notes', 'record')) continue
+    const annotationsPath = `.repaper/literature/annotations/${documentId}.json`
+    // A document has no annotations file until its first annotation is saved.
+    const state = await reader.json(annotationsPath, true)
+    if (!state) continue
+    if (state.schemaVersion !== 1 || !Array.isArray(state.annotations) || state.annotations.length > 5000) {
+      reader.warn('invalid', annotationsPath, '文献批注记录格式不受支持，未纳入搜索。')
+      continue
+    }
+    const annotations: LiteratureAnnotation[] = []
+    const annotationIds = new Set<string>()
+    let valid = true
+    for (const value of state.annotations) {
+      reader.check()
+      const annotation = literatureAnnotation(value, documentId)
+      if (!annotation || annotationIds.has(annotation.id)) {
+        reader.warn('invalid', annotationsPath, '文献批注文件含有损坏、重复或文献关联无效的记录，未纳入搜索。')
+        valid = false
+        break
+      }
+      annotationIds.add(annotation.id)
+      annotations.push(annotation)
+      if (annotations.length % 64 === 0) { await yieldToEventLoop(); reader.check() }
+    }
+    if (!valid) continue
+    for (const annotation of annotations) {
+      reader.check()
+      if (reader.stopped) break
+      const source: SearchDocument = { ...document, id: `literature-annotation:${documentId}:${annotation.id}`, sourcePath: annotationsPath,
+        target: { type: 'literature', documentId, annotationId: annotation.id, page: annotation.page } }
+      await reader.add(source, 'original', annotation.quote, 'original')
+      await reader.add(source, 'notes', annotation.note, 'record')
+      await yieldToEventLoop()
+    }
+    await yieldToEventLoop()
+  }
+}
+
 async function experiments(reader: SearchReader): Promise<void> {
   if (!reader.wants('experiment')) return
   const items = new Map<string, SearchDocument>()
@@ -585,6 +714,7 @@ export async function searchProject(root: string, query: string, options: Projec
   // Records precede manuscript files so a large manuscript cannot hide small structured sources.
   const knownSubmissions = await submissions(reader)
   if (project) await projectMetadata(reader, project, knownSubmissions, metadataPath)
+  await literature(reader)
   await experiments(reader)
   await overview(reader)
   await manuscripts(reader)

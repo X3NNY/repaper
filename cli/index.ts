@@ -18,12 +18,17 @@ import type { OverviewDraft, OverviewNoteDraft } from '../shared/overview'
 import { listSubmissionSnapshots, loadSubmissionSnapshot } from '../electron/main/submissionSnapshots'
 import { searchProject } from '../electron/main/projectSearch'
 import type { ProjectSearchKind } from '../shared/search'
+import { listLiteratureAnnotations, loadLiterature, saveLiteratureAnnotation } from '../electron/main/literature'
+import type { LiteratureAnnotationDraft } from '../shared/literature'
 
 const HELP = `re:paper 项目命令
 
   repaper init [--paper <目录>]
   repaper writing import <LaTeX主文件> [--paper <目录>]
-  repaper search <关键词> [--kind manuscript|experiment|submission|overview] [--limit <数量>] [--offset <位置>] [--json]
+  repaper search <关键词> [--kind manuscript|experiment|submission|overview|literature] [--limit <数量>] [--offset <位置>] [--json]
+  repaper literature list [--json]
+  repaper literature show <文献ID> [--json]
+  repaper literature annotate <文献ID> --file <笔记JSON> [--id <批注ID>]
   repaper overview context [--json]
   repaper overview show [--json]
   repaper overview publish --file <研究脉络JSON>
@@ -191,6 +196,32 @@ async function main(): Promise<void> {
     return
   }
   const root = await findProjectRoot(process.cwd(), extracted.paper)
+  if (command === 'literature') {
+    const verb = args.shift()
+    if (verb === 'list' || verb === 'show') {
+      const json = args.includes('--json')
+      const parsed = parse(args.filter(arg => arg !== '--json'))
+      if (parsed.rest.length || parsed.positionals.length !== (verb === 'show' ? 1 : 0)) throw new Error('用法：repaper literature list [--json] 或 show <文献ID> [--json]')
+      const state = await loadLiterature(root)
+      if (verb === 'list') output(json ? state : state.documents.map(item => `${item.id} · ${item.title}`).join('\n') || '暂无文献。', json)
+      else {
+        const document = state.documents.find(item => item.id === parsed.positionals[0])
+        if (!document) throw new Error('文献已不存在，请重新读取文献列表。')
+        output({ document, pdfFile: `.repaper/literature/${document.pdfPath}`, annotations: await listLiteratureAnnotations(root, document.id) }, json)
+      }
+      return
+    }
+    if (verb === 'annotate') {
+      const parsed = parse(args, ['file', 'id'])
+      if (parsed.positionals.length !== 1 || parsed.rest.length || !one(parsed, 'file')) throw new Error('用法：repaper literature annotate <文献ID> --file <笔记JSON> [--id <批注ID>]')
+      const value = await projectJsonFile(root, one(parsed, 'file')!)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('笔记 JSON 必须是对象。')
+      const saved = await saveLiteratureAnnotation(root, parsed.positionals[0], value as LiteratureAnnotationDraft, one(parsed, 'id'))
+      output(`已保存文献批注 ${saved.id} · 第 ${saved.page} 页`, false)
+      return
+    }
+    throw new Error('用法：repaper literature list|show|annotate ...')
+  }
   if (command === 'search') {
     const json = args.includes('--json')
     const parsed = parse(args.filter(arg => arg !== '--json'), ['kind', 'limit', 'offset'])

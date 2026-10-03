@@ -16,11 +16,11 @@ type Filter<Value extends string> = Value | 'all'
 
 const pageSize = 30
 const kindLabels: Record<ProjectSearchKind, string> = {
-  manuscript: '文稿', experiment: '实验', submission: '投稿', overview: '思考与脉络',
+  manuscript: '文稿', literature: '文献', experiment: '实验', submission: '投稿', overview: '思考与脉络',
   route: '研究路线', revision: '修订任务', project: '项目概况'
 }
 const kindIcons: Record<ProjectSearchKind, LucideIcon> = {
-  manuscript: FileText, experiment: FlaskConical, submission: Send, overview: NotebookPen,
+  manuscript: FileText, literature: BookOpen, experiment: FlaskConical, submission: Send, overview: NotebookPen,
   route: GitBranch, revision: ListTodo, project: BookOpen
 }
 const fieldLabels: Record<ProjectSearchField, string> = {
@@ -61,7 +61,8 @@ function Highlight({ text, ranges }: { text: string; ranges: ProjectSearchRange[
 function resultLocation(result: ProjectSearchResult) {
   const path = result.sourcePath ?? (result.target.type === 'writing' ? result.target.path : '')
   const line = result.match.line ?? (result.target.type === 'writing' ? result.target.line : undefined)
-  return [path, line ? `第 ${line} 行` : ''].filter(Boolean).join(' · ')
+  const page = result.target.type === 'literature' ? result.target.page : undefined
+  return [path, line ? `第 ${line} 行` : '', page ? `第 ${page} 页` : ''].filter(Boolean).join(' · ')
 }
 
 export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
@@ -92,7 +93,7 @@ export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
   const unavailable = !folder
     ? '请先为项目关联论文目录，即可搜索文稿和研究记录。'
     : typeof api?.projectSearch !== 'function'
-      ? '当前应用尚未加载全文搜索接口，请重启 re:paper。'
+      ? '当前应用尚未加载项目搜索接口，请重启 re:paper。'
       : ''
   const project = useMemo(() => ({
     title: paper.title, summary: paper.summary, routes: paper.routes,
@@ -223,7 +224,7 @@ export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
       }
     }
     const subscribers = api && folder
-      ? [api.onOverviewChanged, api.onExperimentsChanged, api.onSubmissionsChanged]
+      ? [api.onOverviewChanged, api.onExperimentsChanged, api.onSubmissionsChanged, api.onLiteratureChanged]
         .filter(subscribe => typeof subscribe === 'function').map(subscribe => subscribe(changed))
       : []
     const focused = () => { invalidate(); setRefreshVersion(value => value + 1) }
@@ -298,7 +299,7 @@ export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
 
   return createPortal(<div ref={backdrop} className="dialog-backdrop project-search-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
     <section className="project-search-dialog" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}>
-      <span id={`${id}-description`} className="project-search-sr-only">输入文字搜索文稿和研究记录。用上下箭头选择结果，按回车打开。</span>
+      <span id={`${id}-description`} className="project-search-sr-only">输入文字搜索文稿、文献引文与笔记和研究记录。用上下箭头选择结果，按回车打开。</span>
       <header className="project-search-heading">
         <div className="project-search-heading-icon"><Search size={19} aria-hidden="true" /></div>
         <div className="project-search-heading-copy"><h2 id={`${id}-title`}>搜索项目</h2><p title={paper.title}>{paper.shortName || paper.title}</p></div>
@@ -307,7 +308,7 @@ export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
       <div className="project-search-controls">
         <div className="project-search-input-wrap" role="search">
           <Search size={19} aria-hidden="true" />
-          <input ref={input} type="search" value={query} maxLength={256} aria-label="搜索项目内容" aria-describedby={`${id}-description`} aria-controls={`${id}-results`} autoComplete="off" spellCheck={false} placeholder="搜索文稿、实验结论、审稿原文…" onChange={event => { invalidate(); setQuery(event.target.value) }} onKeyDown={inputKeyDown} onCompositionStart={() => { composingRef.current = true; setComposing(true); invalidate() }} onCompositionEnd={event => { composingRef.current = false; setComposing(false); setQuery(event.currentTarget.value) }} />
+          <input ref={input} type="search" value={query} maxLength={256} aria-label="搜索项目内容" aria-describedby={`${id}-description`} aria-controls={`${id}-results`} autoComplete="off" spellCheck={false} placeholder="搜索文稿、文献引文与笔记、实验结论…" onChange={event => { invalidate(); setQuery(event.target.value) }} onKeyDown={inputKeyDown} onCompositionStart={() => { composingRef.current = true; setComposing(true); invalidate() }} onCompositionEnd={event => { composingRef.current = false; setComposing(false); setQuery(event.currentTarget.value) }} />
           {query ? <button type="button" className="project-search-clear" aria-label="清空搜索文字" onClick={() => { invalidate(); setQuery(''); input.current?.focus() }}><X size={15} aria-hidden="true" /></button> : <kbd>Esc</kbd>}
         </div>
         <div className="project-search-filters">
@@ -320,11 +321,11 @@ export default function ProjectSearch({ paper, onOpenTarget, onClose }: Props) {
       <div className="project-search-status"><span role="status" aria-live="polite">{pending === 'search' ? <LoaderCircle size={13} className="spin" aria-hidden="true" /> : null}{status}</span>{response?.scannedFiles ? <small>已检索 {response.scannedFiles.toLocaleString('zh-CN')} 个文件</small> : null}</div>
       <div className="project-search-body" aria-busy={Boolean(pending)}>
         {notice ? <p className="project-search-refresh-note" role="status">{notice}</p> : null}
-        {unavailable ? <div className="project-search-empty"><BookOpen size={29} aria-hidden="true" /><h3>{folder ? '全文搜索暂不可用' : '关联目录后搜索全文'}</h3><p>{unavailable}</p></div> : null}
+        {unavailable ? <div className="project-search-empty"><BookOpen size={29} aria-hidden="true" /><h3>{folder ? '项目搜索暂不可用' : '关联目录后搜索项目'}</h3><p>{unavailable}</p></div> : null}
         {error ? <div className="project-search-error" role="alert"><TriangleAlert size={16} aria-hidden="true" /><div><strong>搜索未完成</strong><p>{error}</p><button type="button" onClick={() => { invalidate(); setRefreshVersion(value => value + 1) }}>重试</button></div></div> : null}
         {limited && response ? <details className="project-search-warnings"><summary><TriangleAlert size={14} aria-hidden="true" /><span>搜索范围或结果数量受限，结果可能不完整</span><small>查看说明</small></summary><p>{response.truncated ? '部分内容未纳入搜索，或匹配数量已达到本次搜索上限。' : '以下内容未能读取或不在当前搜索范围内。'}</p>{response.warnings.length ? <ul>{response.warnings.map((warning, index) => <li key={`${warning.code}-${warning.sourcePath}-${index}`}>{warning.sourcePath ? <span>{warning.sourcePath}</span> : null}<p>{warning.message}</p></li>)}</ul> : null}</details> : null}
         {!unavailable && pending === 'search' ? <div className="project-search-empty project-search-loading"><LoaderCircle size={27} className="spin" aria-hidden="true" /><p>正在检索文稿与研究记录…</p></div> : null}
-        {!unavailable && !searchQuery ? <div className="project-search-empty"><div className="project-search-empty-icons"><FileText size={22} aria-hidden="true" /><FlaskConical size={22} aria-hidden="true" /><Send size={22} aria-hidden="true" /></div><h3>从文字找到研究中的线索</h3><p>搜索文稿正文、实验设计与结论、审稿原文和思考记录。<br />输入文字即可搜索，点击结果打开对应位置。</p></div> : null}
+        {!unavailable && !searchQuery ? <div className="project-search-empty"><div className="project-search-empty-icons"><FileText size={22} aria-hidden="true" /><BookOpen size={22} aria-hidden="true" /><FlaskConical size={22} aria-hidden="true" /><Send size={22} aria-hidden="true" /></div><h3>从文字找到研究中的线索</h3><p>搜索文稿正文、文献标题与已保存的引文和笔记、实验结论、审稿原文和思考记录。<br />输入文字即可搜索，点击结果打开对应位置。</p></div> : null}
         {!unavailable && searchQuery && !pending && response && !results.length && !error ? <div className="project-search-empty"><Search size={29} aria-hidden="true" /><h3>没有找到匹配内容</h3><p>试试更短的关键词，或将筛选改为全部。</p></div> : null}
         <ul id={`${id}-results`} className="project-search-results" aria-label="搜索结果">
           {results.map((result, index) => {

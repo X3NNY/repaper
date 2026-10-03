@@ -13,7 +13,7 @@ import { ClaudeSessions } from './claudeSessions'
 import { SessionTerminalManager } from './sessionTerminal'
 import { WritingWorkspaceManager } from './writing'
 import { WritingTemplateManager } from './writingTemplates'
-import { listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog, setExperimentImportance } from './experiments'
+import { initializeProject, listOverviewRevisions, loadExperiments, readExperimentFigure, readRunLog, setExperimentImportance } from './experiments'
 import { adoptLegacySubmission, deleteSubmission, deleteSubmissionEvent, linkSubmissionAgent, loadSubmissions, markSubmissionAgentSent, saveSubmission, saveSubmissionEvent, submissionAgentDeliveryIds, submissionSourcePath } from './submissions'
 import { ensureCliLauncher, ensureSubmissionSkill, installSkill, skillStatuses } from './skillInstaller'
 import type { ExperimentImportanceValue, SkillProvider } from '../../shared/experiments'
@@ -24,6 +24,9 @@ import type { SubmissionSnapshotDraft } from '../../shared/submissionSnapshots'
 import { createSubmissionSnapshot, exportSubmissionSnapshotZip, inspectSubmissionSnapshotCommit, listSubmissionSnapshots, submissionSnapshotFilePath } from './submissionSnapshots'
 import type { ProjectSearchOptions } from '../../shared/search'
 import { searchProject } from './projectSearch'
+import { ensureProjectInstructions } from './projectSetup'
+import type { LiteratureAnnotationDraft, LiteratureImportResult } from '../../shared/literature'
+import { deleteLiteratureAnnotation, importLiterature, listLiteratureAnnotations, loadLiterature, readLiteraturePdf, renameLiteratureDocument, saveLiteratureAnnotation } from './literature'
 
 let mainWindow: BrowserWindow | null = null
 let saveQueue: Promise<void> = Promise.resolve()
@@ -43,6 +46,40 @@ const submissionTimers = new Map<string, NodeJS.Timeout>()
 const submissionLaunches = new Map<string, Promise<SubmissionAgentLaunch>>()
 const maxSubmissionImageBytes = 25 * 1024 * 1024
 const searchRequests = new Map<number, AbortController>()
+const literatureWatchers = new Map<string, FSWatcher>()
+const literatureTimers = new Map<string, NodeJS.Timeout>()
+
+function watchLiterature(folder: string): void {
+  if (literatureWatchers.has(folder)) return
+  try {
+    const watcher = watch(join(folder, '.repaper', 'literature'), { recursive: true }, (_event, filename) => {
+      const path = String(filename ?? '').replaceAll('\\', '/')
+      if (path !== 'state.json' && !/^annotations\/ld_[a-f0-9-]+\.json$/.test(path)) return
+      const previous = literatureTimers.get(folder)
+      if (previous) clearTimeout(previous)
+      literatureTimers.set(folder, setTimeout(() => mainWindow?.webContents.send('literature:changed', folder), 200))
+    })
+    watcher.on('error', () => { watcher.close(); literatureWatchers.delete(folder) })
+    literatureWatchers.set(folder, watcher)
+  } catch { /* A project may not have imported its first PDF yet. */ }
+}
+
+async function importSelectedLiterature(folder: string, paths: unknown): Promise<LiteratureImportResult> {
+  if (!Array.isArray(paths) || paths.length < 1 || paths.length > 20) throw new Error('一次请导入 1–20 个本地 PDF 文件。')
+  const filePaths: string[] = []
+  for (const path of paths) {
+    if (typeof path !== 'string' || !isAbsolute(path) || path.includes('\0') || path.length > 4096 || extname(path).toLowerCase() !== '.pdf') {
+      throw new Error('请导入具有有效绝对路径的本地 PDF 文件。')
+    }
+    filePaths.push(path)
+  }
+  await initializeProject(folder)
+  await ensureProjectInstructions(folder)
+  const result = await importLiterature(folder, filePaths)
+  watchLiterature(folder)
+  mainWindow?.webContents.send('literature:changed', folder)
+  return result
+}
 
 function watchOverview(folder: string): void {
   const watchers = overviewWatchers.get(folder) ?? new Map<string, FSWatcher>()
@@ -366,6 +403,41 @@ app.whenReady().then(async () => {
     terminals.resize(terminalId, cols, rows))
   ipcMain.handle('session:terminal:close', (_event, terminalId: string) => terminals.close(terminalId))
   ipcMain.handle('writing:get', async (_event, folderPath: string) => writing.getState(await requireFolder(folderPath)))
+  ipcMain.handle('literature:list', async (_event, folderPath: string) => {
+    const folder = await requireFolder(folderPath)
+    const state = await loadLiterature(folder)
+    watchLiterature(folder)
+    return state
+  })
+  ipcMain.handle('literature:import', async (_event, folderPath: string) => {
+    const folder = await requireFolder(folderPath)
+    const options = { title: '导入参考文献 PDF', properties: ['openFile' as const, 'multiSelections' as const], filters: [{ name: 'PDF 文献', extensions: ['pdf'] }] }
+    const chosen = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+    if (chosen.canceled || !chosen.filePaths.length) return null
+    return importSelectedLiterature(folder, chosen.filePaths)
+  })
+  ipcMain.handle('literature:import:files', async (_event, folderPath: string, paths: unknown) =>
+    importSelectedLiterature(await requireFolder(folderPath), paths))
+  ipcMain.handle('literature:pdf', async (_event, folderPath: string, id: string) => readLiteraturePdf(await requireFolder(folderPath), id))
+  ipcMain.handle('literature:rename', async (_event, folderPath: string, id: string, title: string) => {
+    const folder = await requireFolder(folderPath)
+    const result = await renameLiteratureDocument(folder, id, title)
+    mainWindow?.webContents.send('literature:changed', folder)
+    return result
+  })
+  ipcMain.handle('literature:annotations', async (_event, folderPath: string, id: string) => listLiteratureAnnotations(await requireFolder(folderPath), id))
+  ipcMain.handle('literature:annotation:save', async (_event, folderPath: string, id: string, draft: LiteratureAnnotationDraft, annotationId?: string) => {
+    const folder = await requireFolder(folderPath)
+    const result = await saveLiteratureAnnotation(folder, id, draft, annotationId)
+    watchLiterature(folder)
+    mainWindow?.webContents.send('literature:changed', folder)
+    return result
+  })
+  ipcMain.handle('literature:annotation:delete', async (_event, folderPath: string, id: string, annotationId: string, expectedRevision: number) => {
+    const folder = await requireFolder(folderPath)
+    await deleteLiteratureAnnotation(folder, id, annotationId, expectedRevision)
+    mainWindow?.webContents.send('literature:changed', folder)
+  })
   ipcMain.handle('writing:initialize', async (_event, folderPath: string, template: WritingTemplate) =>
     writingTemplates.initializeWriting(await requireFolder(folderPath), template, writing))
   ipcMain.handle('writing:templates:list', () => writingTemplates.list())
@@ -443,7 +515,9 @@ app.whenReady().then(async () => {
     try {
       const folder = await requireFolder(folderPath)
       controller.signal.throwIfAborted()
-      return await searchProject(folder, query, { ...options, signal: controller.signal })
+      const result = await searchProject(folder, query, { ...options, signal: controller.signal })
+      watchLiterature(folder)
+      return result
     }
     finally { if (searchRequests.get(event.sender.id) === controller) searchRequests.delete(event.sender.id) }
   })
@@ -565,6 +639,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  for (const watcher of literatureWatchers.values()) watcher.close()
+  for (const timer of literatureTimers.values()) clearTimeout(timer)
   for (const controller of searchRequests.values()) controller.abort()
   for (const watchers of overviewWatchers.values()) for (const watcher of watchers.values()) watcher.close()
   for (const timer of overviewTimers.values()) clearTimeout(timer)
