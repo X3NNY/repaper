@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto')
 const { readFileSync, readdirSync, writeFileSync } = require('node:fs')
 const { resolve, join } = require('node:path')
 const { spawnSync } = require('node:child_process')
+const { setTimeout: delay } = require('node:timers/promises')
 const { version } = require('../package.json')
 
 const tag = `v${version}`
@@ -28,20 +29,66 @@ assert.deepEqual(found, names, 'All twelve expected installers/archives must exi
 const sums = names.map(name => `${createHash('sha256').update(readFileSync(join(directory, name))).digest('hex')}  ${name}`)
 writeFileSync(join(directory, 'SHA256SUMS.txt'), `${sums.join('\n')}\n`)
 
-function gh(args, allowFailure = false) {
-  const result = spawnSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  if (result.error) throw result.error
-  if (result.status !== 0 && !allowFailure) throw new Error(result.stderr || result.stdout)
-  return result
+async function gh(args, allowFailure = false) {
+  for (let attempt = 0; ; attempt++) {
+    const result = spawnSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    if (result.error) throw result.error
+    const message = result.stderr || result.stdout
+    if (result.status !== 0 && attempt < 4 && /HTTP (?:429|5\d\d)|timeout|connection reset|unexpected EOF|connection refused|temporary failure/i.test(message)) {
+      const wait = 2000 * 2 ** attempt
+      console.warn(`GitHub request interrupted; retrying in ${wait / 1000}s (${attempt + 1}/4)`)
+      await delay(wait)
+      continue
+    }
+    if (result.status !== 0 && !allowFailure) throw new Error(message)
+    return result
+  }
 }
 
-const existing = gh(['release', 'view', tag, '--json', 'isDraft,url'], true)
-if (existing.status === 0) {
-  assert.equal(JSON.parse(existing.stdout).isDraft, true, 'Refusing to replace assets of an already published release')
-} else {
-  const args = ['release', 'create', tag, '--title', `re:paper ${tag}`, '--draft', '--generate-notes', '--verify-tag']
-  if (version.includes('-')) args.push('--prerelease')
-  gh(args)
+const repository = process.env.GH_REPO || 'X3NNY/repaper'
+assert.match(repository, /^[\w.-]+\/[\w.-]+$/)
+
+async function readDraft(allowMissing = false) {
+  const result = await gh(['api', `repos/${repository}/releases/tags/${tag}`], allowMissing)
+  if (result.status !== 0) {
+    assert.match(result.stderr || result.stdout, /HTTP 404/, 'Could not confirm whether the release already exists')
+    return null
+  }
+  const release = JSON.parse(result.stdout)
+  assert.equal(release.draft, true, 'Refusing to replace assets of an already published release')
+  return release
 }
-gh(['release', 'upload', tag, ...[...names, 'SHA256SUMS.txt'].map(name => join(directory, name)), resolve(__dirname, '../LICENSE'), '--clobber'])
-console.log(gh(['release', 'view', tag, '--json', 'url', '--jq', '.url']).stdout.trim())
+async function main() {
+  if (!await readDraft(true)) {
+    const args = ['release', 'create', tag, '--title', `re:paper ${tag}`, '--draft', '--generate-notes', '--verify-tag', '--repo', repository]
+    if (version.includes('-')) args.push('--prerelease')
+    await gh(args)
+  }
+  const files = [...names, 'SHA256SUMS.txt'].map(name => ({ name, path: join(directory, name) }))
+  files.push({ name: 'LICENSE', path: resolve(__dirname, '../LICENSE') })
+  const expected = files.map(file => {
+    const bytes = readFileSync(file.path)
+    return { ...file, size: bytes.length, digest: 'sha256:' + createHash('sha256').update(bytes).digest('hex') }
+  })
+  for (const file of expected) {
+    const release = await readDraft()
+    const remote = release.assets.find(asset => asset.name === file.name)
+    if (remote?.state === 'uploaded' && remote.size === file.size && remote.digest === file.digest) {
+      console.log(`Already uploaded and verified: ${file.name}`)
+      continue
+    }
+    console.log(`Uploading: ${file.name}`)
+    await gh(['release', 'upload', tag, file.path, '--clobber', '--repo', repository])
+  }
+  const release = await readDraft()
+  assert.deepEqual(release.assets.map(asset => asset.name).sort(), expected.map(file => file.name).sort(), 'Release assets must exactly match the current build')
+  for (const file of expected) {
+    const remote = release.assets.find(asset => asset.name === file.name)
+    assert.equal(remote.state, 'uploaded', `Upload incomplete: ${file.name}`)
+    assert.equal(remote.size, file.size, `Size mismatch: ${file.name}`)
+    assert.equal(remote.digest, file.digest, `SHA256 mismatch: ${file.name}`)
+  }
+  console.log(release.html_url)
+}
+
+main().catch(error => { console.error(error.message); process.exitCode = 1 })

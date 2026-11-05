@@ -107,6 +107,8 @@ Linux 文件名的架构后缀随格式不同：
 
 发布脚本会校验全部十二个产物，并拒绝混入旧 ZIP 包。DEB 面向 Debian / Ubuntu，RPM 面向 Fedora / RHEL 系；CI 已安装 RPM 打包工具。macOS 从 v0.1.1 开始仅提供 DMG，已有公开 Release 保持不变。
 
+附件逐个上传，遇到 GitHub 429、5xx 或临时网络错误时自动重试。恢复上传时，已上传且大小及 SHA256 与当前产物一致的文件会直接保留；结束前再核对全部十四个附件的状态、大小和 SHA256。已公开发布的 Release 仍拒绝修改。
+
 ## 签名与安装提示
 
 当前配置用于初期分发：Windows 未使用发行商证书；macOS 使用 ad-hoc 签名，尚未做 Apple notarization。Windows 可能出现 SmartScreen 提示；从网络下载的 macOS 应用可能被 Gatekeeper 阻止。
