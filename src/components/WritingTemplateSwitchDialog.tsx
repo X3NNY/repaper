@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, RefreshCw, X } from 'lucide-react'
 import type { WritingTemplate, WritingTemplateInfo, WritingTemplateSwitchPreview } from '../../shared/writing'
 import SelectField from './SelectField'
+import ResizeHandle, { useResizablePanels } from './ResizablePanels'
 import './WritingTemplateSwitchDialog.css'
 
 const WritingEditor = lazy(() => import('./WritingEditor'))
@@ -31,6 +32,10 @@ export default function WritingTemplateSwitchDialog({
   onTemplateChange, onPreview, onApply, onClose
 }: Props) {
   const modal = useRef<HTMLDivElement>(null)
+  const layout = useResizablePanels({ storageKey: 'template-preview', panes: [
+    { id: 'files', defaultRatio: 0.29, minSize: 170, maxSize: 480 },
+    { id: 'diff', minSize: 300 }
+  ] })
   const selectedTemplate = templates.find(item => item.id === template)
   const availablePreview = preview?.templateId === template ? preview : null
   const disabled = Boolean(busy)
@@ -71,11 +76,12 @@ export default function WritingTemplateSwitchDialog({
           </div>
           <p className="writing-template-switch-summary">{availablePreview.summary}</p>
           {availablePreview.warnings.length ? <div className="writing-template-switch-warnings"><CircleAlert size={16} /><ul>{availablePreview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div> : null}
-          <div className="writing-template-switch-preview">
+          <div ref={layout.ref} style={layout.style} className="writing-template-switch-preview">
             <aside className="writing-template-switch-files">
               <div className="writing-template-switch-files-heading"><strong>文件变动 · {availablePreview.changes.totalFiles}</strong><small><span className="addition">+{availablePreview.changes.additions}</span><span className="deletion">−{availablePreview.changes.deletions}</span></small></div>
               <div className="writing-template-switch-file-list">{availablePreview.changes.files.map(file => <div className="writing-template-switch-file" key={file.path}><FileText size={14} /><span title={file.path}>{file.path}</span><small className={`writing-review-badge ${file.status}`}>{changeLabels[file.status]}</small>{file.binary ? <small className="writing-template-switch-binary">二进制</small> : <small className="writing-template-switch-file-lines"><span className="addition">+{file.additions}</span><span className="deletion">−{file.deletions}</span></small>}</div>)}</div>
             </aside>
+            <ResizeHandle {...layout.handle('files', '调整模板文件列表与差异预览宽度')} />
             <div className="writing-template-switch-diff">
               <div className="writing-template-switch-diff-heading"><strong>主文稿差异</strong><small><span className="deletion">删除</span><span className="addition">新增</span></small></div>
               <Suspense fallback={<div className="writing-source-state"><LoaderCircle size={17} className="spin" />正在准备差异…</div>}><WritingEditor key={availablePreview.token} filePath={availablePreview.mainFile} value={availablePreview.current} reviewOriginal={availablePreview.original} onChange={() => undefined} onSave={() => undefined} /></Suspense>

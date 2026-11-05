@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import ResizeHandle, { useResizablePanels } from './ResizablePanels'
 import {
   Activity, ArrowRight, Check, ChevronDown, ChevronRight, CircleAlert, Clipboard,
   Clock3, FileCode2, FolderOpen, GitBranch, History, ListTree, LoaderCircle,
@@ -189,6 +190,14 @@ function OverviewRevisionHistory({ revisions, focusRevisionId }: { revisions: Ex
 
 function ExperimentContent({ item, state, folderPath, focusSource, importanceBusy, onToggleImportance }: { item: ExperimentItem; state: ExperimentWorkspace; folderPath: string; focusSource?: OverviewFocus | null; importanceBusy: boolean; onToggleImportance: () => void }) {
   const api = window.paperApi
+  const runLayout = useResizablePanels({ storageKey: 'experiment-runs', stackBelow: 560, panes: [
+    { id: 'runs', defaultRatio: 0.36, minSize: 190, maxSize: 540 },
+    { id: 'detail', minSize: 300 }
+  ] })
+  const drawerLayout = useResizablePanels({ storageKey: 'experiment-evidence', panes: [
+    { id: 'background', minSize: 160 },
+    { id: 'evidence', defaultSize: 560, minSize: 360, maxSize: 1100 }
+  ] })
   const runs = state.runs.filter((run) => run.experimentId === item.id)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [focusedRunId, setFocusedRunId] = useState<string | null>(null)
@@ -299,8 +308,8 @@ function ExperimentContent({ item, state, folderPath, focusSource, importanceBus
     </div> : null}
     {legacyFields.length ? <details className="experiment-legacy-details"><summary>原始记录</summary><dl>{legacyFields.map(({ label, value }) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></details> : null}
     {runs.length ? <><div className="experiment-run-head"><div><h3>运行记录 <b>{runs.length}</b></h3></div><button className="experiment-run-toggle" onClick={() => setShowRuns((open) => !open)} aria-expanded={showRuns}>{showRuns ? '收起' : '展开'}<ChevronDown size={14} /></button></div>
-      {showRuns ? <div className="experiment-run-layout"><div className="experiment-run-list">{runs.map((run) => <button key={run.id} className={`experiment-run-row ${activeRun?.id === run.id ? 'selected' : ''}`} onClick={() => setSelectedRunId(run.id)}><span className={`experiment-run-dot ${runTone(run.status)}`} /><span className="experiment-run-main"><strong>{runName(run)}</strong><small>{time(run.startedAt)} · {run.id.slice(-8)}</small></span><span className={`experiment-run-status ${runTone(run.status)}`}>{statusName[run.status]}</span><ChevronRight size={14} /></button>)}</div>{activeRun ? <RunDetail key={activeRun.id} run={activeRun} folderPath={folderPath} /> : null}</div> : null}</> : null}
-    {focusedRun ? createPortal(<div className="experiment-evidence-backdrop" onClick={() => setFocusedRunId(null)}><aside className="experiment-evidence-drawer" role="dialog" aria-modal="true" aria-label="运行证据" onClick={(event) => event.stopPropagation()}><div className="experiment-evidence-drawer-head"><strong>{runName(focusedRun)}</strong><button ref={drawerCloseRef} onClick={() => setFocusedRunId(null)} aria-label="关闭运行证据"><X size={18} /></button></div><RunDetail key={focusedRun.id} run={focusedRun} folderPath={folderPath} /></aside></div>, document.body) : null}
+      {showRuns ? <div ref={runLayout.ref} style={runLayout.style} className="experiment-run-layout"><div className="experiment-run-list">{runs.map((run) => <button key={run.id} className={`experiment-run-row ${activeRun?.id === run.id ? 'selected' : ''}`} onClick={() => setSelectedRunId(run.id)}><span className={`experiment-run-dot ${runTone(run.status)}`} /><span className="experiment-run-main"><strong>{runName(run)}</strong><small>{time(run.startedAt)} · {run.id.slice(-8)}</small></span><span className={`experiment-run-status ${runTone(run.status)}`}>{statusName[run.status]}</span><ChevronRight size={14} /></button>)}</div>{!runLayout.stacked ? <ResizeHandle {...runLayout.handle('runs', '调整运行列表与详情宽度')} /> : null}{activeRun ? <RunDetail key={activeRun.id} run={activeRun} folderPath={folderPath} /> : null}</div> : null}</> : null}
+    {focusedRun ? createPortal(<div ref={drawerLayout.ref} style={drawerLayout.style} className="experiment-evidence-backdrop" role="dialog" aria-modal="true" aria-label="运行证据" onClick={() => setFocusedRunId(null)}><div aria-hidden="true" /><ResizeHandle {...drawerLayout.handle('evidence', '调整运行证据面板宽度')} /><aside className="experiment-evidence-drawer" onClick={(event) => event.stopPropagation()}><div className="experiment-evidence-drawer-head"><strong>{runName(focusedRun)}</strong><button ref={drawerCloseRef} onClick={() => setFocusedRunId(null)} aria-label="关闭运行证据"><X size={18} /></button></div><RunDetail key={focusedRun.id} run={focusedRun} folderPath={folderPath} /></aside></div>, document.body) : null}
   </div>
 }
 
@@ -318,6 +327,10 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
   const [importanceBusy, setImportanceBusy] = useState('')
   const [importanceError, setImportanceError] = useState('')
   const [treeCollapsed, setTreeCollapsed] = useState(false)
+  const layout = useResizablePanels({ storageKey: 'experiments', gutter: treeCollapsed ? 0 : 6, panes: [
+    treeCollapsed ? { id: 'tree', fixedSize: 52, minSize: 52 } : { id: 'tree', defaultSize: 267, minSize: 210, maxSize: 520 },
+    { id: 'content', minSize: 360 }
+  ] })
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const refreshSequence = useRef(0)
   const sourceRequest = useRef<number | null>(null)
@@ -433,7 +446,7 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
     {toolbarTarget ? createPortal(<button className="button button-light" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />刷新实验</button>, toolbarTarget) : null}
     <div className="experiments-shell">
     {error || readError || importanceError ? <div className="experiment-error"><CircleAlert size={16} />{error || readError || importanceError}</div> : null}
-    <div className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong>{unreadCount ? <span className="experiments-unread-count">{unreadCount} 未读</span> : null}<span>{visibleExperiments.length}</span></div><div className="experiments-tree-filter"><button type="button" className={`experiments-important-filter ${importantOnly ? 'active' : ''}`} aria-pressed={importantOnly} onClick={toggleImportantFilter}><Star size={13} fill={importantOnly ? 'currentColor' : 'none'} />仅看重要<span>{importantCount}</span></button></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length && (!importantOnly || visibleExperiments.length) ? <div className="experiments-groups">{state.groups.map((group) => {
+    <div ref={layout.ref} style={layout.style} className={`experiments-body ${treeCollapsed ? 'tree-collapsed' : ''}`}><aside className="experiments-tree"><div className="experiments-tree-head"><button className="experiments-tree-toggle" onClick={() => setTreeCollapsed((value) => !value)} title={treeCollapsed ? '展开实验目录' : '收起实验目录'} aria-label={treeCollapsed ? '展开实验目录' : '收起实验目录'}><ListTree size={16} /></button><strong>实验目录</strong>{unreadCount ? <span className="experiments-unread-count">{unreadCount} 未读</span> : null}<span>{visibleExperiments.length}</span></div><div className="experiments-tree-filter"><button type="button" className={`experiments-important-filter ${importantOnly ? 'active' : ''}`} aria-pressed={importantOnly} onClick={toggleImportantFilter}><Star size={13} fill={importantOnly ? 'currentColor' : 'none'} />仅看重要<span>{importantCount}</span></button></div>{loading ? <div className="experiments-loading"><LoaderCircle size={17} className="spin" /> 正在读取…</div> : state?.groups.length && (!importantOnly || visibleExperiments.length) ? <div className="experiments-groups">{state.groups.map((group) => {
       const items = visibleExperiments.filter((item) => item.groupKey === group.key)
       if (importantOnly && !items.length) return null
       const collapsed = collapsedGroups.has(group.key)
@@ -447,6 +460,7 @@ export default function ExperimentsPanel({ folderPath, onChooseFolder, toolbarTa
         </button>
       })}</div>}</div>
     })}</div> : <div className="experiments-tree-empty">{importantOnly ? '还没有标记为重要的实验。' : '还没有实验组。Agent 创建后会自动出现。'}</div>}<div className="experiments-tree-foot"><Clock3 size={13} />本地文件自动同步</div></aside>
+    {!treeCollapsed ? <ResizeHandle {...layout.handle('tree', '调整实验目录宽度')} /> : null}
     <main className="experiments-main">
       {loading ? <div className="experiments-main-empty">正在读取实验记录…</div>
         : importantOnly && !visibleExperiments.length ? <div className="experiments-main-empty experiments-important-empty"><Star size={24} /><h3>还没有重要实验</h3><p>打开实验，点击标题旁的星标即可标记。</p><button className="button button-light" onClick={() => setImportantOnly(false)}>显示全部实验</button></div>

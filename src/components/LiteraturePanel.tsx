@@ -9,6 +9,7 @@ import 'katex/dist/katex.min.css'
 import type { LiteratureAnnotation, LiteratureAnnotationColor, LiteratureAnnotationDraft, LiteratureDocument, LiteratureRect } from '../../shared/literature'
 import LiteraturePdfReader from './LiteraturePdfReader'
 import SelectField from './SelectField'
+import ResizeHandle, { useResizablePanels } from './ResizablePanels'
 import './LiteraturePanel.css'
 
 interface Props {
@@ -53,6 +54,11 @@ export default function LiteraturePanel({ folderPath, toolbarTarget, onChooseFol
   const [filter, setFilter] = useState('')
   const [showLibrary, setShowLibrary] = useState(() => window.innerWidth > 1050)
   const [showNotes, setShowNotes] = useState(true)
+  const layout = useResizablePanels({ storageKey: 'literature', panes: [
+    ...(showLibrary ? [{ id: 'library', defaultSize: 220, minSize: 170, maxSize: 520 }] : []),
+    { id: 'reader', minSize: 300 },
+    ...(showNotes ? [{ id: 'notes', defaultSize: 300, minSize: 220, maxSize: 760 }] : [])
+  ] })
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [jumpTarget, setJumpTarget] = useState<{ page: number; rect?: LiteratureRect; requestId: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -399,7 +405,7 @@ export default function LiteraturePanel({ folderPath, toolbarTarget, onChooseFol
     {dropOverlay}
     {toolbarTarget ? createPortal(toolbar, toolbarTarget) : <div className="literature-inline-toolbar">{toolbar}</div>}
     {error || notice ? <div className={'literature-banner' + (error ? ' is-error' : '')} role={error ? 'alert' : 'status'}><span>{error || notice}</span><button type="button" aria-label="关闭提示" onClick={() => { setError(''); setNotice('') }}><X size={14} /></button></div> : null}
-    {libraryLoading && !documents.length ? <div className="literature-empty"><LoaderCircle size={27} className="spin" /><p>正在读取文献库…</p></div> : !documents.length ? <div className="literature-empty"><BookOpenText size={38} /><h2>收集你要读的文献</h2><p>把 PDF 拖到这里，或点击下方导入。<br />在原文上标注，把阅读思考留在旁边。</p><button type="button" disabled={importing} onClick={() => void importPdfs()}><Upload size={16} /> 导入 PDF</button></div> : <div className={'literature-layout' + (!showLibrary ? ' library-hidden' : '') + (!showNotes ? ' notes-hidden' : '')}>
+    {libraryLoading && !documents.length ? <div className="literature-empty"><LoaderCircle size={27} className="spin" /><p>正在读取文献库…</p></div> : !documents.length ? <div className="literature-empty"><BookOpenText size={38} /><h2>收集你要读的文献</h2><p>把 PDF 拖到这里，或点击下方导入。<br />在原文上标注，把阅读思考留在旁边。</p><button type="button" disabled={importing} onClick={() => void importPdfs()}><Upload size={16} /> 导入 PDF</button></div> : <div ref={layout.ref} style={layout.style} className={'literature-layout' + (!showLibrary ? ' library-hidden' : '') + (!showNotes ? ' notes-hidden' : '')}>
       {showLibrary ? <aside className="literature-library" aria-label="文献列表">
         <header><BookOpenText size={16} /><strong>文献库</strong><span>{documents.length}</span></header>
         <div className="literature-filter"><Search size={14} /><input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder="查找文献" aria-label="查找文献" /></div>
@@ -407,24 +413,27 @@ export default function LiteraturePanel({ folderPath, toolbarTarget, onChooseFol
           <FileText size={17} /><span><strong title={item.title}>{item.title}</strong><small>{dateLabel(item.createdAt)}<i />{sizeLabel(item.size)}</small>{counts[item.id] !== undefined ? <small>{counts[item.id]} 条标注与笔记</small> : null}</span>
         </button>)}{!visibleDocuments.length ? <p className="literature-list-empty">没有匹配的文献</p> : null}</div>
       </aside> : null}
+      {showLibrary ? <ResizeHandle {...layout.handle('library', '调整文献列表宽度')} /> : null}
       <div className="literature-reading">
         <header className="literature-document-heading">{renaming ? <form onSubmit={event => { event.preventDefault(); void renameDocument() }}><input autoFocus aria-label="文献标题" value={titleDraft} onChange={event => setTitleDraft(event.target.value)} disabled={mutating} /><button type="submit" disabled={mutating || !titleDraft.trim()} aria-label="保存文献标题"><Check size={16} /></button><button type="button" disabled={mutating} onClick={() => setRenaming(false)} aria-label="取消修改标题"><X size={16} /></button></form> : <><strong title={selectedDocument?.title}>{selectedDocument?.title ?? '选择文献'}</strong><button type="button" disabled={!selectedDocument || mutating} title="修改文献标题" aria-label="修改文献标题" onClick={() => { setTitleDraft(selectedDocument?.title ?? ''); setRenaming(true) }}><Pencil size={14} /></button></>}</header>
         {pdfLoading ? <div className="literature-empty"><LoaderCircle size={26} className="spin" /><p>正在载入 PDF…</p></div> : pdfError ? <div className="literature-empty is-error" role="alert"><FileText size={30} /><p>{pdfError}</p><button type="button" onClick={() => { if (selectedId) void loadPdf(selectedId) }}>重新读取 PDF</button></div> : <LiteraturePdfReader key={folder + ':' + selectedId} data={pdf?.id === selectedId ? pdf.data : null} annotations={activeAnnotations} selectedAnnotationId={selectedAnnotationId} jumpTarget={jumpTarget} disabled={mutating || importing || annotationLoading || Boolean(annotationError)} onCreateAnnotation={async draft => { await persistAnnotation(draft) }} onSelectAnnotation={selectAnnotation} onPageChange={setCurrentPage} onDocumentLoaded={setPageCount} />}
       </div>
+      {showNotes ? <ResizeHandle {...layout.handle('notes', '调整标注与笔记宽度')} /> : null}
       {showNotes ? <aside className="literature-notes" aria-label="标注与笔记">
         <header><MessageSquare size={16} /><strong>标注与笔记</strong><span>{activeAnnotations.length}</span></header>
         <div className="literature-note-list">
           {annotationError ? <div className="literature-note-error" role="alert"><p>{annotationError}</p><button type="button" disabled={annotationLoading} onClick={() => { if (selectedId) void loadAnnotations(selectedId) }}>重新读取标注</button></div> : null}
-          {annotationLoading && !activeAnnotations.length ? <p className="literature-list-empty">正在读取标注…</p> : !activeAnnotations.length && !annotationError ? <div className="literature-notes-empty"><Highlighter size={24} /><strong>把思考留在原文旁</strong><p>选中文字后添加高亮、划线或笔记。<br />也可在第 {currentPage} 页添加页码笔记。</p></div> : null}
+          {annotationLoading && !activeAnnotations.length ? <p className="literature-list-empty">正在读取标注…</p> : !activeAnnotations.length && !annotationError ? <div className="literature-notes-empty"><Highlighter size={24} /><strong>把思考留在原文旁</strong><p>选中文字添加标注，或使用框选高亮、拖动划线。<br />也可在第 {currentPage} 页添加页码笔记。</p></div> : null}
           {sortedAnnotations.map(annotation => {
             const Icon = annotation.kind === 'highlight' ? Highlighter : annotation.kind === 'underline' ? Underline : MessageSquare
             const editingThis = editing?.id === annotation.id
             const purePageNote = annotation.kind === 'note' && !annotation.quote && !annotation.rects.length
+            const annotationLabel = !annotation.quote && annotation.rects.length ? '区域' + kindLabels[annotation.kind] : kindLabels[annotation.kind]
             const latest = activeAnnotations.find(item => item.id === annotation.id)
             const removed = !latest
             const stale = editingThis && (removed || editing.revision !== annotation.revision)
             return <article key={annotation.id} ref={element => { if (element) noteElements.current.set(annotation.id, element); else noteElements.current.delete(annotation.id) }} className={'literature-note color-' + annotation.color + (selectedAnnotationId === annotation.id ? ' is-selected' : '')}>
-              <div className="literature-note-meta"><button type="button" className="literature-note-location" onClick={() => selectAnnotation(annotation)}><Icon size={13} /><span>第 {annotation.page} 页 · {kindLabels[annotation.kind]}</span><ChevronRight size={12} /></button><div><button type="button" disabled={mutating} onClick={() => startEditing(annotation)} title="编辑笔记" aria-label="编辑笔记"><Pencil size={13} /></button><button type="button" disabled={mutating} onClick={() => { setDeleteConfirm(annotation.id); setEditing(null) }} title="删除标注" aria-label="删除标注"><Trash2 size={13} /></button></div></div>
+              <div className="literature-note-meta"><button type="button" className="literature-note-location" onClick={() => selectAnnotation(annotation)}><Icon size={13} /><span>第 {annotation.page} 页 · {annotationLabel}</span><ChevronRight size={12} /></button><div><button type="button" disabled={mutating} onClick={() => startEditing(annotation)} title="编辑笔记" aria-label="编辑笔记"><Pencil size={13} /></button><button type="button" disabled={mutating} onClick={() => { setDeleteConfirm(annotation.id); setEditing(null) }} title="删除标注" aria-label="删除标注"><Trash2 size={13} /></button></div></div>
               {annotation.quote ? <blockquote onClick={() => { if (window.getSelection()?.isCollapsed) selectAnnotation(annotation) }}>{annotation.quote}</blockquote> : null}
               {editingThis ? <form className="literature-note-editor" onSubmit={event => { event.preventDefault(); void saveEdit() }}>
                 {stale ? <div className="literature-edit-warning">{removed ? <p>这条标注已被删除。你的草稿仍保留在下方，可以复制保存。</p> : <><p>这条笔记已有更新。查看最新内容并合并到下方草稿后，可以继续编辑。</p><details><summary>最新保存的笔记</summary><pre>{annotation.note || '没有笔记内容'}</pre></details><button type="button" disabled={mutating} onClick={() => { setEditing(annotation); if (!purePageNote) setEditPage(String(annotation.page)); setAnnotationError('') }}>保留草稿，继续编辑</button></>}</div> : null}

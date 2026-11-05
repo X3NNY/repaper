@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Check, ChevronDown, ChevronRight, CircleAlert, Code2, FilePlus2,
@@ -11,6 +11,7 @@ import type {
 } from '../../shared/writing'
 import { builtinWritingTemplates, type WritingTemplateInfo } from '../../shared/writing'
 import SelectField from './SelectField'
+import ResizeHandle, { useResizablePanels } from './ResizablePanels'
 import WritingTemplateSwitchDialog, { type WritingTemplateSwitchBusy } from './WritingTemplateSwitchDialog'
 import type { OverviewFocus } from '../../shared/overview'
 
@@ -32,11 +33,6 @@ interface OpenDocument {
 }
 
 const editableFile = (path: string) => /\.(tex|bib|sty|cls|bst|txt|md|json|ya?ml)$/i.test(path)
-
-function savedSplit(folderPath?: string): number {
-  const value = Number(localStorage.getItem(`repaper-writing-split:${folderPath ?? ''}`))
-  return Number.isFinite(value) && value >= 0.2 && value <= 0.8 ? value : 0.5
-}
 
 function firstEditable(files: WritingFile[]): string | null {
   const all = files.flatMap((file): string[] => file.kind === 'directory' ? (file.children ? [firstEditable(file.children)].filter((path): path is string => Boolean(path)) : []) : [file.path])
@@ -137,12 +133,16 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
   const [newFileName, setNewFileName] = useState('')
   const [workspaceUpdating, setWorkspaceUpdating] = useState(false)
   const [editorRevision, setEditorRevision] = useState(0)
-  const [splitRatio, setSplitRatio] = useState(() => savedSplit(folderPath))
-  const [draggingSplit, setDraggingSplit] = useState(false)
+  const showPdf = !selectedHistory && Boolean(selectedPath?.toLowerCase().endsWith('.tex'))
+  const fileLayout = useResizablePanels({ storageKey: 'writing-files', gutter: treeCollapsed ? 0 : 6, panes: [
+    treeCollapsed ? { id: 'files', fixedSize: 44, minSize: 44 } : { id: 'files', defaultSize: 220, minSize: 170, maxSize: 520 },
+    { id: 'document', minSize: showPdf ? 566 : 320 }
+  ] })
+  const documentLayout = useResizablePanels({ storageKey: `writing-document:${folderPath ?? ''}`, panes: showPdf ? [
+    { id: 'source', defaultRatio: 0.5, minSize: 260 },
+    { id: 'pdf', minSize: 300 }
+  ] : [{ id: 'source', minSize: 260 }] })
   const documentRef = useRef<OpenDocument>({ path: null, text: '', savedText: '' })
-  const splitContainerRef = useRef<HTMLDivElement>(null)
-  const splitRatioRef = useRef(splitRatio)
-  const splitPointerRef = useRef<number | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const saveChainRef = useRef<Promise<void>>(Promise.resolve())
   const changesRequestRef = useRef(0)
@@ -173,56 +173,6 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       if (draft && api) void api.writingTemplateSwitchCancel(draft.folderPath, draft.token).catch(() => undefined)
     }
   }, [api, folderPath])
-
-  useEffect(() => {
-    const next = savedSplit(folderPath)
-    splitRatioRef.current = next
-    setSplitRatio(next)
-  }, [folderPath])
-
-  function updateSplit(desiredRatio: number) {
-    const width = splitContainerRef.current?.getBoundingClientRect().width ?? 0
-    if (width <= 0) return
-    const minSource = Math.min(260, width * 0.45)
-    const maxSource = Math.max(minSource, width - 308)
-    const source = Math.max(minSource, Math.min(maxSource, desiredRatio * width - 4))
-    const next = (source + 4) / width
-    splitRatioRef.current = next
-    setSplitRatio(next)
-  }
-
-  function updateSplitFromPointer(clientX: number) {
-    const rect = splitContainerRef.current?.getBoundingClientRect()
-    if (rect) updateSplit((clientX - rect.left) / rect.width)
-  }
-
-  function finishSplit(pointerId: number) {
-    if (splitPointerRef.current !== pointerId) return
-    splitPointerRef.current = null
-    setDraggingSplit(false)
-    localStorage.setItem(`repaper-writing-split:${folderPath ?? ''}`, String(splitRatioRef.current))
-  }
-
-  useEffect(() => {
-    if (!draggingSplit) return
-    const finish = (clientX?: number) => {
-      const pointerId = splitPointerRef.current
-      if (pointerId === null) return
-      if (clientX !== undefined) updateSplitFromPointer(clientX)
-      finishSplit(pointerId)
-    }
-    const onPointerUp = (event: PointerEvent) => finish(event.clientX)
-    const onMouseUp = (event: MouseEvent) => finish(event.clientX)
-    const onBlur = () => finish()
-    window.addEventListener('pointerup', onPointerUp)
-    window.addEventListener('mouseup', onMouseUp)
-    window.addEventListener('blur', onBlur)
-    return () => {
-      window.removeEventListener('pointerup', onPointerUp)
-      window.removeEventListener('mouseup', onMouseUp)
-      window.removeEventListener('blur', onBlur)
-    }
-  }, [draggingSplit, folderPath])
 
   const saveCurrent = useCallback(async () => {
     if (saveTimerRef.current !== null) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
@@ -808,8 +758,6 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
     {templateError || error ? <div className="writing-setup-error"><CircleAlert size={16} />{templateError || error}</div> : null}
   </section>
 
-  const selectedIsTex = selectedPath?.toLowerCase().endsWith('.tex') === true
-  const showPdf = !selectedHistory && selectedIsTex
   const currentHistory = history.find((item) => item.hash === selectedHistory)
   const selectedReviewChange = reviewSummary?.files.find((file) => file.path === reviewSelectedPath)
 
@@ -841,7 +789,7 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
       <button onClick={() => setCompileResult(null)} aria-label="关闭编译结果"><X size={14} /></button>
     </div> : null}
     {selectedHistory ? <div className="writing-review-bar"><GitCompareArrows size={16} /><strong>版本对比</strong><span title={currentHistory?.message}>{currentHistory?.message ?? selectedHistory.slice(0, 8)} → 当前工作区</span><small>{reviewLoading ? '检查变动中…' : reviewSummary ? `${reviewSummary.totalFiles} 个文件 · +${reviewSummary.additions} / -${reviewSummary.deletions}` : ''}</small><button onClick={() => void stopReview()}><X size={13} /> 退出对比</button></div> : null}
-    <div className="writing-body">
+    <div ref={fileLayout.ref} style={fileLayout.style} className="writing-body">
       <aside className="writing-files">
         <div className="writing-files-head">
           <button className="writing-collapse" onClick={() => setTreeCollapsed((current) => !current)} title={treeCollapsed ? '展开文件列表' : '收起文件列表'} aria-label={treeCollapsed ? '展开文件列表' : '收起文件列表'}>{treeCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
@@ -853,20 +801,14 @@ export default function WritingPanel({ folderPath, onChooseFolder, onManageTempl
           <button className="writing-open-folder" onClick={() => void api.writingOpenFolder(folderPath).catch((reason) => setError(String(reason)))}><FolderOpen size={15} /> 在文件管理器中打开</button>
         </> : null}
       </aside>
-      <div className={`writing-document ${showPdf ? 'with-pdf' : ''} ${draggingSplit ? 'is-resizing' : ''}`} ref={splitContainerRef} style={{ '--source-width': `${splitRatio * 100}%` } as CSSProperties}>
+      {!treeCollapsed ? <ResizeHandle {...fileLayout.handle('files', '调整写作文件列表宽度')} /> : null}
+      <div className={`writing-document ${showPdf ? 'with-pdf' : ''}`} ref={documentLayout.ref} style={documentLayout.style}>
         <div className="writing-source">
           <div className="writing-source-head"><span><FileText size={15} />{selectedHistory ? reviewSelectedPath || '选择变更文件' : selectedPath || '未选择文件'}</span>{selectedHistory ? selectedReviewChange ? <small className={`writing-review-badge ${selectedReviewChange.status}`}>{changeLabel[selectedReviewChange.status]} · +{selectedReviewChange.additions} -{selectedReviewChange.deletions}</small> : null : <small className={`writing-save-state ${saveState}`}>{saveState === 'saved' ? '已保存' : saveState === 'saving' ? '保存中…' : saveState === 'error' ? '保存失败' : '待保存'}</small>}</div>
           {selectedHistory ? reviewLoading || reviewFileLoading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在生成版本差异…</div> : reviewError ? <div className="writing-source-state error"><CircleAlert size={18} />{reviewError}</div> : reviewFile?.binary ? <div className="writing-source-state"><FileText size={25} />这个文件是二进制文件或暂不支持文本对比。</div> : reviewSelectedPath && reviewFile ? <Suspense fallback={<div className="writing-source-state">正在准备对比视图…</div>}><WritingEditor key={`review:${selectedHistory}:${reviewSelectedPath}`} filePath={reviewSelectedPath} value={reviewFile.current} reviewOriginal={reviewFile.original} onChange={() => undefined} onSave={() => undefined} /></Suspense> : <div className="writing-source-state">选择左侧变更文件查看差异。</div>
             : reading ? <div className="writing-source-state"><LoaderCircle size={18} className="spin" /> 正在打开文件…</div> : selectedPath && editableFile(selectedPath) ? <Suspense fallback={<div className="writing-source-state">正在准备编辑器…</div>}><WritingEditor key={`${selectedPath}:${editorRevision}`} filePath={selectedPath} value={content} onChange={changeContent} onSave={() => { if (!templateSwitchLockedRef.current) void saveCurrent().catch(() => undefined) }} jumpTo={jumpTarget?.path === selectedPath ? jumpTarget : undefined} /></Suspense> : <div className="writing-source-state"><FileText size={25} />{selectedPath ? '这个文件无法在内置编辑器中打开。' : '从左侧选择一个文件开始写作。'}</div>}
         </div>
-        {showPdf ? <div className="writing-divider" role="separator" aria-label="调整编辑器与 PDF 预览宽度" aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(splitRatio * 100)} tabIndex={0}
-          onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); splitPointerRef.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); setDraggingSplit(true); updateSplitFromPointer(event.clientX) }}
-          onPointerMove={(event) => { if (splitPointerRef.current === event.pointerId) updateSplitFromPointer(event.clientX) }}
-          onPointerUp={(event) => { if (splitPointerRef.current !== event.pointerId) return; updateSplitFromPointer(event.clientX); finishSplit(event.pointerId); event.currentTarget.releasePointerCapture(event.pointerId) }}
-          onPointerCancel={(event) => finishSplit(event.pointerId)}
-          onLostPointerCapture={(event) => finishSplit(event.pointerId)}
-          onDoubleClick={() => { updateSplit(0.5); localStorage.setItem(`repaper-writing-split:${folderPath ?? ''}`, String(splitRatioRef.current)) }}
-          onKeyDown={(event) => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const rect = splitContainerRef.current?.getBoundingClientRect(); const source = splitContainerRef.current?.querySelector('.writing-source')?.getBoundingClientRect(); const current = rect && source ? (source.width + 4) / rect.width : splitRatio; updateSplit(event.key === 'Home' ? 0.25 : event.key === 'End' ? 0.75 : current + (event.key === 'ArrowLeft' ? -0.05 : 0.05)); localStorage.setItem(`repaper-writing-split:${folderPath ?? ''}`, String(splitRatioRef.current)) }} /> : null}
+        {showPdf ? <ResizeHandle className="writing-divider" {...documentLayout.handle('source', '调整编辑器与 PDF 预览宽度')} /> : null}
         {showPdf ? <Suspense fallback={<div className="writing-pdf-state">正在准备 PDF 预览…</div>}><PdfPreview data={pdfData} log={compileLog} onOpenPdfFolder={() => void api.writingOpenPdfFolder(folderPath).catch((reason) => setError(reason instanceof Error ? reason.message : '无法打开 PDF 所在文件夹。'))} onInverseSearch={inverseSearch} /></Suspense> : null}
       </div>
     </div>

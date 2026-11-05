@@ -390,7 +390,7 @@ function literatureAnnotation(value: unknown, documentId: string): LiteratureAnn
     if (!rect) return null
     rects.push(rect)
   }
-  if (item.kind === 'note' ? !item.note.trim() : !item.quote.trim() || !rects.length) return null
+  if (item.kind === 'note' ? !item.note.trim() : !rects.length || item.quote !== '' && !item.quote.trim()) return null
   const draft: Pick<LiteratureAnnotation, 'kind' | 'page' | 'quote' | 'note' | 'color' | 'rects'> = {
     kind: item.kind, page: item.page, quote: item.quote, note: item.note, color: item.color, rects
   }
@@ -460,7 +460,7 @@ async function literature(reader: SearchReader): Promise<void> {
       if (reader.stopped) break
       const source: SearchDocument = { ...document, id: `literature-annotation:${documentId}:${annotation.id}`, sourcePath: annotationsPath,
         target: { type: 'literature', documentId, annotationId: annotation.id, page: annotation.page } }
-      await reader.add(source, 'original', annotation.quote, 'original')
+      if (annotation.quote) await reader.add(source, 'original', annotation.quote, 'original')
       await reader.add(source, 'notes', annotation.note, 'record')
       await yieldToEventLoop()
     }

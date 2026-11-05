@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import {
   ArrowLeft, ArrowRight, BookOpenText, Check, ChevronRight,
   CircleAlert, FileText, FlaskConical, FolderKanban, FolderOpen,
-  LayoutDashboard, ListFilter, Plus, Search, Send, Settings2, Sparkles,
+  LayoutDashboard, ListFilter, Plus, Search, Send, Settings2,
   TerminalSquare, Trash2, X, type LucideIcon
 } from 'lucide-react'
 import type {
@@ -52,6 +52,15 @@ function upsert<T extends { id: string }>(items: T[], next: T): T[] {
 
 function StatusPill({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' }) {
   return <span className={`status-pill tone-${tone}`}><span className="status-dot" />{label}</span>
+}
+
+function NavigationButton({ icon: Icon, label, active = false, className = '', onClick }: {
+  icon: LucideIcon; label: string; active?: boolean; className?: string; onClick: () => void
+}) {
+  return <button type="button" className={`rail-button ${className} ${active ? 'active' : ''}`} aria-label={label} aria-current={active ? 'page' : undefined} onClick={onClick}>
+    <Icon size={20} aria-hidden="true" />
+    <span className="rail-tooltip" aria-hidden="true">{label}</span>
+  </button>
 }
 
 function paperTone(status: PaperStatus): 'neutral' | 'green' | 'amber' | 'red' | 'blue' {
@@ -153,7 +162,7 @@ export default function App() {
     ? 'full_access' : 'auto_approve'
   const sortedPapers = mostRecentPaper(papers)
   const selectedPaper = view.kind === 'paper' ? papers.find((paper) => paper.id === view.id) : undefined
-  const paperFolderName = selectedPaper?.folderPath?.split(/[\\/]/).filter(Boolean).at(-1)
+  const saveLabel = saveState === 'saving' ? '正在保存' : saveState === 'error' ? '保存失败' : '本地自动保存'
   const topbarPage = selectedPaper ? tabs.find((item) => item.id === tab)! : view.kind === 'library'
     ? { label: '全部论文', detail: '搜索与管理项目', icon: FolderKanban }
     : view.kind === 'settings'
@@ -274,51 +283,39 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${selectedPaper ? 'paper-sidebar' : ''}`}>
-        <button className="brand" onClick={() => setView({ kind: 'dashboard' })} aria-label="返回总览">
-          <img className="brand-logo" src="./repaper-logo.svg" alt="re:paper" />
+        <button type="button" className="brand rail-button" onClick={() => setView({ kind: 'dashboard' })} aria-label="re:paper · 返回总览">
+          <img className="brand-logo" src="./repaper-mark.svg" alt="" />
+          <span className="rail-tooltip" aria-hidden="true">re:paper · 返回总览</span>
         </button>
 
         {selectedPaper ? <>
-          <button type="button" className="sidebar-return" onClick={showLibrary}><ArrowLeft size={16} /> 返回全部论文</button>
-          <div className="sidebar-paper-identity">
-            <div className="sidebar-paper-kicker">CURRENT PAPER</div>
-            <h2 title={selectedPaper.title}>{selectedPaper.title}</h2>
-            <StatusPill label={paperStatusLabels[selectedPaper.status]} tone={paperTone(selectedPaper.status)} />
-          </div>
-          <div className="sidebar-section-label paper-nav-label">PAPER WORKSPACE</div>
+          <NavigationButton className="sidebar-return" icon={ArrowLeft} label="返回全部论文" onClick={showLibrary} />
+          <div className="rail-divider" />
           <nav className="paper-side-nav" aria-label="当前论文导航">
-            {tabs.map((item) => {
-              const Icon = item.icon
-              return <button key={item.id} type="button" className={`paper-side-link ${tab === item.id ? 'active' : ''}`} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}><Icon size={18} /><span>{item.label}</span></button>
-            })}
+            {tabs.map((item) => <NavigationButton key={item.id} className="paper-side-link" icon={item.icon} label={item.label} active={tab === item.id} onClick={() => setTab(item.id)} />)}
           </nav>
-        </> : <>
-          <div className="sidebar-section-label">WORKSPACE</div>
+        </> : (
           <nav className="main-nav" aria-label="主导航">
-            <button className={`nav-link ${view.kind === 'dashboard' ? 'active' : ''}`} onClick={() => setView({ kind: 'dashboard' })}><LayoutDashboard size={18} /> 总览 <ChevronRight className="nav-chevron" size={15} /></button>
-            <button className={`nav-link ${view.kind === 'library' ? 'active' : ''}`} onClick={showLibrary}><FolderKanban size={18} /> 全部论文 <span className="nav-count">{papers.length}</span></button>
-            <button className={`nav-link ${view.kind === 'settings' ? 'active' : ''}`} onClick={() => setView({ kind: 'settings' })}><Settings2 size={18} /> 设置 <ChevronRight className="nav-chevron" size={15} /></button>
+            <NavigationButton className="nav-link" icon={LayoutDashboard} label="总览" active={view.kind === 'dashboard'} onClick={() => setView({ kind: 'dashboard' })} />
+            <NavigationButton className="nav-link" icon={FolderKanban} label="全部论文" active={view.kind === 'library'} onClick={showLibrary} />
           </nav>
-
-          <div className="sidebar-heading"><span>最近的论文</span><button type="button" onClick={() => setDialog({ kind: 'paper' })} aria-label="新建论文"><Plus size={17} /></button></div>
-          <div className="recent-nav">
-            {sortedPapers.length ? sortedPapers.slice(0, 6).map((paper) => (
-              <button key={paper.id} className="recent-link" onClick={() => showPaper(paper.id)}>
-                <span className="recent-bullet" /><span>{paper.shortName || paper.title}</span>
-              </button>
-            )) : <p className="sidebar-empty">还没有论文项目</p>}
-          </div>
-        </>}
+        )}
 
         <div className="sidebar-bottom">
-          {selectedPaper ? <button type="button" className="sidebar-folder" onClick={() => setDialog({ kind: 'paper', paperId: selectedPaper.id })} title={selectedPaper.folderPath || '选择论文工作目录'}><FolderOpen size={17} /><span><small>工作目录</small><strong>{paperFolderName || '选择文件夹'}</strong></span><ChevronRight size={15} /></button> : <div className="sidebar-note"><Sparkles size={18} /><span>让每篇论文的进展<br />都清晰可见。</span></div>}
-          <div className="save-indicator"><span className={`save-light ${saveState}`} />{saveState === 'saving' ? '正在保存' : saveState === 'error' ? '保存失败' : '本地自动保存'}</div>
+          {!selectedPaper ? <NavigationButton icon={Plus} label="新建论文" onClick={() => setDialog({ kind: 'paper' })} /> : null}
+          <NavigationButton className="nav-link" icon={Settings2} label="设置" active={view.kind === 'settings'} onClick={() => setView({ kind: 'settings' })} />
         </div>
       </aside>
 
       <main className="main-panel">
         <header className="topbar">
-          <div className="topbar-context"><span className="topbar-context-icon"><TopbarIcon size={18} /></span><span className="topbar-context-copy"><strong>{topbarPage.label}</strong><small>{topbarPage.detail}</small></span></div>
+          <div className="topbar-context">
+            <span className="topbar-context-icon"><TopbarIcon size={18} /></span>
+            <div className="topbar-context-copy">
+              <div className="topbar-context-heading"><strong>{topbarPage.label}</strong>{selectedPaper ? <StatusPill label={paperStatusLabels[selectedPaper.status]} tone={paperTone(selectedPaper.status)} /> : null}<span className="topbar-save-indicator" role="status" aria-label={saveLabel} title={saveLabel}><span className={`save-light ${saveState}`} aria-hidden="true" /></span></div>
+              <small title={selectedPaper?.title}>{selectedPaper?.title || topbarPage.detail}</small>
+            </div>
+          </div>
           <div className="topbar-right" ref={setToolbarTarget}>
             {selectedPaper ? <button className="icon-button subtle" title="搜索项目（Ctrl / ⌘ K）" aria-label="搜索项目" onClick={() => { if (!document.querySelector('[role="dialog"][aria-modal="true"]')) setProjectSearchOpen(true) }}><Search size={18} /></button> : null}
             {!selectedPaper && view.kind !== 'settings' ? <label className="global-search"><Search size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); setView({ kind: 'library' }) }} placeholder="搜索论文、标签或内容" aria-label="搜索论文" /><kbd>⌕</kbd></label> : null}
@@ -481,7 +478,7 @@ function PaperDetail({ paper, tab, onTab, onEdit, onDelete, onManageTemplates, t
 
   return <>
     {searchOpen ? <ProjectSearch paper={paper} onOpenTarget={openSearchTarget} onClose={onCloseSearch} /> : null}
-    {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
+    {tab === 'overview' ? <div className="paper-head"><div className="paper-head-content"><div className="paper-meta-line"><span className="eyebrow">PAPER PROJECT{paper.shortName ? ` / ${paper.shortName}` : ''}</span><StatusPill label={paperStatusLabels[paper.status]} tone={paperTone(paper.status)} /></div><h1>{paper.title}</h1><p>{paper.summary || '这篇论文还没有简介。补充研究问题和当前进度，之后回看会更清楚。'}</p><div className="paper-tags">{paper.tags.map((tag) => <span key={tag}>#{tag}</span>)}<span className="meta-date">创建于 {formatDate(paper.createdAt)}</span></div><button type="button" className="paper-folder" onClick={onEdit} title={paper.folderPath || '选择论文工作目录'} aria-label="编辑论文工作目录"><FolderOpen size={15} /><span>工作目录</span><strong>{paper.folderPath || '选择文件夹'}</strong><ChevronRight size={14} /></button></div><div className="paper-head-actions"><button className="icon-button danger-hover" onClick={onDelete} aria-label="删除论文"><Trash2 size={18} /></button></div></div> : null}
     {tab === 'sessions' ? <SessionsPanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} defaultAgent={defaultAgent} permissionMode={permissionMode} focusTerminalId={agentLaunch?.terminalId ?? null} /> : null}
     {tab === 'literature' ? <Suspense fallback={<EmptySection icon={<BookOpenText size={26} />} title="正在载入文献页…" description="" action={null} />}><LiteraturePanel folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={literatureFocus} /></Suspense> : null}
     {tab === 'writing' ? <WritingPanel onManageTemplates={onManageTemplates} folderPath={paper.folderPath} onChooseFolder={onEdit} toolbarTarget={toolbarTarget} focusSource={sourceFocus} /> : null}

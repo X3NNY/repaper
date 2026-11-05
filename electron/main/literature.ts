@@ -307,7 +307,13 @@ function cleanDraft(value: unknown): LiteratureAnnotationDraft {
   const quote = text(data.quote, '选文原文', maxTextBytes)
   const note = text(data.note, '批注文字', maxTextBytes)
   const rects = data.rects.map(cleanRect)
-  if (data.kind === 'note' ? !note.trim() : !quote.trim() || !rects.length) throw new Error(data.kind === 'note' ? '页码笔记需要填写文字。' : '高亮和划线需要选文原文及页面位置。')
+  if (data.kind === 'note') {
+    if (!note.trim()) throw new Error('页码笔记需要填写文字。')
+  } else {
+    if (!rects.length) throw new Error('高亮和划线需要有效的页面位置。')
+    // An empty quote denotes a region mark with no transcribed source text.
+    if (quote !== '' && !quote.trim()) throw new Error('选文原文不能只有空白；区域标注请保持原文为空。')
+  }
   const draft: LiteratureAnnotationDraft = {
     kind: data.kind as LiteratureAnnotationDraft['kind'], page: data.page, quote, note,
     color: data.color as LiteratureAnnotationDraft['color'], rects

@@ -22,7 +22,7 @@ const instructions = [
   '### Read literature and reading notes',
   '',
   '- Read `repaper literature list --json`, then `repaper literature show <document-id> --json`. The returned `pdfFile` is project-relative; open that PDF with an available PDF-reading skill or file tool before making claims about the complete paper. Reading notes and saved quotation anchors are not a substitute for the complete source.',
-  '- Imported PDF copies live in `.repaper/literature/pdfs/`; originals remain unchanged. Highlights, underlines, page notes and exact selected quotations live in `.repaper/literature/annotations/<document-id>.json`. Preserve quotation wording and page/rectangle anchors, and put interpretations in `note`.',
+  '- Imported PDF copies live in `.repaper/literature/pdfs/`; originals remain unchanged. Highlights, underlines, page notes and exact selected quotations live in `.repaper/literature/annotations/<document-id>.json`. A region annotation with an empty quote records only a location, not extracted wording. Preserve quotation wording and page/rectangle anchors, and put interpretations in `note`.',
   '- Save a grounded page note through `repaper literature annotate <document-id> --file <draft.json>`. The draft uses `kind: "note"`, a one-based `page`, `quote: ""`, `rects: []`, a `color` (yellow/green/blue/pink), and `note`. To edit an existing note, pass `--id <annotation-id>` and the current `revision` as `expectedRevision`; preserve its anchor and reread after conflicts. Do not invent selected text or PDF coordinates.',
   '',
   '### Read or maintain experiments',

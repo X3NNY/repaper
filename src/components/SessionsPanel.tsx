@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import type { CodexThreadSummary } from '../../shared/codex'
 import type { AgentPermissionMode, SessionProvider, SessionSummary, SessionTerminalInfo } from '../../shared/sessions'
+import ResizeHandle, { useResizablePanels } from './ResizablePanels'
 
 const SessionTerminal = lazy(() => import('./SessionTerminal'))
 
@@ -35,6 +36,10 @@ function sessionTitle(session: SessionSummary): string {
 
 export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarget, defaultAgent, permissionMode, focusTerminalId }: Props) {
   const api = window.paperApi
+  const layout = useResizablePanels({ storageKey: 'sessions', panes: [
+    { id: 'sessions', defaultSize: 280, minSize: 200, maxSize: 520 },
+    { id: 'terminal', minSize: 400 }
+  ] })
   const [codexThreads, setCodexThreads] = useState<CodexThreadSummary[]>([])
   const [claudeSessions, setClaudeSessions] = useState<SessionSummary[]>([])
   const [terminals, setTerminals] = useState<SessionTerminalInfo[]>([])
@@ -258,7 +263,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
         {newSessionMenuOpen ? <div className="session-new-menu" role="menu" aria-label="选择新会话 Agent">{(['codex', 'claude'] as const).map((provider) => <button key={provider} role="menuitem" onClick={() => void startSession(provider)}><span>新建 {providerNames[provider]}</span>{provider === defaultAgent ? <><small>默认</small><Check size={14} /></> : null}</button>)}</div> : null}
       </div>
     </div>, toolbarTarget) : null}
-    <section className="codex-panel">
+    <section ref={layout.ref} style={layout.style} className="codex-panel">
     <aside className="codex-thread-list" aria-label="会话列表">
       <div className="codex-sidebar-head">
         <div className="eyebrow">SESSIONS / WORKSPACE</div>
@@ -285,6 +290,7 @@ export default function SessionsPanel({ folderPath, onChooseFolder, toolbarTarge
       </div>
       <div className="codex-list-footer"><button onClick={() => { void refreshCodex(undefined, true); void refreshClaude(undefined, true) }} disabled={loadingCodex || loadingClaude} title="扫描 Codex 和 Claude Code 的本地会话，可能需要几十秒"><Search size={13} /> {scanningCodexAll || scanningClaudeAll ? '扫描中…' : '扫描会话'}</button></div>
     </aside>
+    <ResizeHandle {...layout.handle('sessions', '调整会话列表宽度')} />
     <div className="codex-conversation">
       <div className="codex-conversation-head"><div><strong>{selected ? selectedSession ? sessionTitle(selectedSession) : selected.sessionId ? `${providerNames[selected.provider]} 会话` : `新建 ${providerNames[selected.provider]} 会话` : '会话终端'}</strong><span>{selected ? selected.running ? `${providerNames[selected.provider]} 运行中 · ${selected.permissionMode === 'full_access' ? '完全访问' : '自动审批'}` : `终端已退出${selected.exitCode === null ? '' : ` · ${selected.exitCode}`}` : '选择会话开始'}</span></div>{selected ? <button className="small-button codex-terminal-close" onClick={() => void closeTerminal(selected.id)}><X size={14} /> 关闭终端</button> : null}</div>
       {selected ? (

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { ChevronLeft, ChevronRight, FileText, Highlighter, Maximize, MessageSquare, Minus, Plus, Underline, X } from 'lucide-react'
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -23,6 +23,8 @@ interface PageSize { width: number; height: number }
 interface SelectionDraft { page: number; quote: string; rects: LiteratureRect[]; left: number; top: number; issue: string }
 interface NoteDraft { page: number; quote: string; rects: LiteratureRect[]; left: number; top: number }
 interface ScrollAnchor { page: number; fraction: number }
+type GeometryTool = 'highlight' | 'underline'
+interface GeometryGesture { pointerId: number; kind: GeometryTool; x: number; y: number }
 interface PageProps {
   document: PDFDocumentProxy
   number: number
@@ -34,6 +36,12 @@ interface PageProps {
   selectedAnnotationId: string | null
   onSelectAnnotation: (annotation: LiteratureAnnotation) => void
   onMeasured: () => void
+  geometryTool: GeometryTool | null
+  geometryDisabled: boolean
+  gestureVersion: number
+  activePage: number
+  color: LiteratureAnnotationColor
+  onCreateGeometry: (kind: GeometryTool, page: number, rect: LiteratureRect, clientX: number, clientY: number) => void
 }
 
 type RenderTask = ReturnType<PDFPageProxy['render']>
@@ -59,7 +67,7 @@ function annotationStyle(rect: LiteratureRect): CSSProperties {
   return { left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` }
 }
 
-const LiteraturePage = memo(function LiteraturePage({ document, number, width, zoom, fallbackSize, scrollRef, annotations, selectedAnnotationId, onSelectAnnotation, onMeasured }: PageProps) {
+const LiteraturePage = memo(function LiteraturePage({ document, number, width, zoom, fallbackSize, scrollRef, annotations, selectedAnnotationId, onSelectAnnotation, onMeasured, geometryTool, geometryDisabled, gestureVersion, activePage, color, onCreateGeometry }: PageProps) {
   const pageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textHostRef = useRef<HTMLDivElement>(null)
@@ -67,6 +75,8 @@ const LiteraturePage = memo(function LiteraturePage({ document, number, width, z
   const [nearby, setNearby] = useState(number === 1)
   const [error, setError] = useState('')
   const [hasText, setHasText] = useState<boolean | null>(null)
+  const gestureRef = useRef<GeometryGesture | null>(null)
+  const [preview, setPreview] = useState<LiteratureRect | null>(null)
   const display = pageDisplay(size, width, zoom)
 
   useEffect(() => {
@@ -79,6 +89,19 @@ const LiteraturePage = memo(function LiteraturePage({ document, number, width, z
   }, [scrollRef])
 
   useLayoutEffect(() => { onMeasured() }, [size, onMeasured])
+
+  function cancelGesture() {
+    const gesture = gestureRef.current
+    gestureRef.current = null
+    setPreview(null)
+    const element = pageRef.current
+    if (gesture && element?.hasPointerCapture(gesture.pointerId)) element.releasePointerCapture(gesture.pointerId)
+  }
+
+  useLayoutEffect(() => {
+    cancelGesture()
+    return cancelGesture
+  }, [document, number, width, zoom, size, nearby, geometryTool, geometryDisabled, gestureVersion, activePage])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -140,7 +163,7 @@ const LiteraturePage = memo(function LiteraturePage({ document, number, width, z
   }, [document, number, width, zoom, nearby])
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !window.getSelection()?.isCollapsed) return
+    if (geometryTool || event.button !== 0 || !window.getSelection()?.isCollapsed) return
     const bounds = pageRef.current?.getBoundingClientRect()
     if (!bounds?.width || !bounds.height) return
     const x = (event.clientX - bounds.left) / bounds.width
@@ -149,26 +172,73 @@ const LiteraturePage = memo(function LiteraturePage({ document, number, width, z
     if (annotation) onSelectAnnotation(annotation)
   }
 
+  function geometryRect(gesture: GeometryGesture, event: ReactPointerEvent<HTMLDivElement>): LiteratureRect | null {
+    const bounds = pageRef.current?.getBoundingClientRect()
+    if (!bounds?.width || !bounds.height) return null
+    const endX = clamp((event.clientX - bounds.left) / bounds.width)
+    const endY = clamp((event.clientY - bounds.top) / bounds.height)
+    const x = Math.min(gesture.x, endX)
+    const y = gesture.kind === 'underline' ? clamp(gesture.y - 2 / bounds.height) : Math.min(gesture.y, endY)
+    return { x, y,
+      width: Math.min(1 - x, Math.abs(endX - gesture.x)),
+      height: Math.min(1 - y, gesture.kind === 'underline' ? 4 / bounds.height : Math.abs(endY - gesture.y)) }
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!geometryTool || geometryDisabled || event.button !== 0 || !event.isPrimary) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    event.preventDefault()
+    event.stopPropagation()
+    window.getSelection()?.removeAllRanges()
+    gestureRef.current = { pointerId: event.pointerId, kind: geometryTool,
+      x: clamp((event.clientX - bounds.left) / bounds.width), y: clamp((event.clientY - bounds.top) / bounds.height) }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setPreview(geometryRect(gestureRef.current, event))
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    event.stopPropagation()
+    setPreview(geometryRect(gesture, event))
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = geometryRect(gesture, event)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    cancelGesture()
+    if (geometryDisabled || !rect || rect.width * bounds.width < 8 || (gesture.kind === 'highlight' && rect.height * bounds.height < 6)) return
+    onCreateGeometry(gesture.kind, number, rect, event.clientX, event.clientY)
+  }
+
   return <div className="literature-pdf-sheet">
-    <div className="literature-pdf-page" ref={pageRef} data-page-number={number} aria-label={`PDF 第 ${number} 页`} onClick={handleClick} style={{ width: display.width, height: display.height }}>
+    <div className={`literature-pdf-page ${geometryTool ? 'geometry-active' : ''}`} ref={pageRef} data-page-number={number} aria-label={`PDF 第 ${number} 页`} onClick={handleClick}
+      onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={cancelGesture} onLostPointerCapture={cancelGesture} style={{ width: display.width, height: display.height }}>
       <canvas ref={canvasRef} aria-hidden="true" />
       <div className="literature-pdf-text-host" ref={textHostRef} />
       <div className="literature-pdf-annotations">
         {annotations.flatMap((annotation) => annotation.rects.map((rect, index) => <button
           type="button" key={`${annotation.id}-${index}`} style={annotationStyle(rect)}
-          className={`literature-pdf-mark ${annotation.kind} color-${annotation.color} ${selectedAnnotationId === annotation.id ? 'selected' : ''}`}
-          title={annotation.note || annotation.quote} aria-label={`${annotation.kind === 'underline' ? '划线' : annotation.kind === 'note' ? '笔记' : '高亮'}：${annotation.quote || annotation.note}`}
-          onClick={(event) => { event.stopPropagation(); onSelectAnnotation(annotation) }}
+          className={`literature-pdf-mark ${annotation.kind} ${annotation.kind === 'underline' && !annotation.quote ? 'region-underline' : ''} color-${annotation.color} ${selectedAnnotationId === annotation.id ? 'selected' : ''}`}
+          title={annotation.note || annotation.quote || `第 ${number} 页区域${annotation.kind === 'underline' ? '划线' : '高亮'}`} aria-label={`${annotation.kind === 'underline' ? '划线' : annotation.kind === 'note' ? '笔记' : '高亮'}：${annotation.quote || annotation.note || `第 ${number} 页区域批注`}`}
+          onClick={(event) => { event.stopPropagation(); if (!geometryTool) onSelectAnnotation(annotation) }}
         />))}
         {annotations.filter((annotation) => !annotation.rects.length).map((annotation, index) => <button
           type="button" key={annotation.id} className={`literature-pdf-page-note color-${annotation.color} ${selectedAnnotationId === annotation.id ? 'selected' : ''}`}
           style={{ top: 10 + index * 30 }} title={annotation.note} aria-label={`第 ${number} 页笔记：${annotation.note}`}
-          onClick={(event) => { event.stopPropagation(); onSelectAnnotation(annotation) }}
+          onClick={(event) => { event.stopPropagation(); if (!geometryTool) onSelectAnnotation(annotation) }}
         ><MessageSquare size={15} /></button>)}
+        {preview && geometryTool ? <div className={`literature-pdf-mark literature-pdf-gesture-preview ${geometryTool} ${geometryTool === 'underline' ? 'region-underline' : ''} color-${color}`} style={annotationStyle(preview)} aria-hidden="true" /> : null}
       </div>
       {error ? <div className="literature-pdf-page-error" role="alert">第 {number} 页渲染失败：{error}</div> : null}
     </div>
-    <div className="literature-pdf-page-caption">{number}{hasText === false ? <span>此页没有可选文字，可添加页码笔记</span> : null}</div>
+    <div className="literature-pdf-page-caption" style={{ width: display.width }}>{number}{hasText === false ? <span>此页没有可选文字，可用框选高亮、拖动划线或页码笔记</span> : null}</div>
   </div>
 })
 
@@ -192,6 +262,8 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
   const [saving, setSaving] = useState(false)
   const [retryKind, setRetryKind] = useState<'highlight' | 'underline' | null>(null)
   const [color, setColor] = useState<LiteratureAnnotationColor>('yellow')
+  const [geometryTool, setGeometryTool] = useState<GeometryTool | null>(null)
+  const [gestureVersion, setGestureVersion] = useState(0)
   const [selection, setSelection] = useState<SelectionDraft | null>(null)
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null)
   const [note, setNote] = useState('')
@@ -307,6 +379,8 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
     retainedSelectionRef.current = null
     setSaving(false)
     setRetryKind(null)
+    setGeometryTool(null)
+    setGestureVersion((current) => current + 1)
     setSelection(null)
     setNoteDraft(null)
     setPage(1)
@@ -342,7 +416,7 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
   }, [document, jumpTarget?.requestId, scrollToPage])
 
   const captureSelection = useCallback(() => {
-    if (disabled || noteDraft || savingRef.current || retainedSelectionRef.current) return
+    if (disabled || geometryTool || noteDraft || savingRef.current || retainedSelectionRef.current) return
     const selected = window.getSelection()
     const root = rootRef.current
     if (!selected || !root || !selected.rangeCount || selected.isCollapsed) { setSelection(null); return }
@@ -378,7 +452,7 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
     setSelection({ page: Number(start.dataset.pageNumber), quote, rects,
       left: clamp(last.left - rootBounds.left, 8, Math.max(8, rootBounds.width - Math.min(360, rootBounds.width - 16) - 8)),
       top: clamp(last.top - rootBounds.top - 50, 55, Math.max(55, rootBounds.height - 60)), issue })
-  }, [disabled, noteDraft])
+  }, [disabled, geometryTool, noteDraft])
 
   useEffect(() => {
     let frame = 0
@@ -395,7 +469,10 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || savingRef.current) return
+      if (event.key !== 'Escape') return
+      setGeometryTool(null)
+      setGestureVersion((current) => current + 1)
+      if (savingRef.current) return
       retainedSelectionRef.current = null
       setRetryKind(null)
       setSelection(null)
@@ -421,6 +498,7 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
 
   function navigate(number: number) {
     if (!document) return
+    setGestureVersion((current) => current + 1)
     const target = clamp(Math.round(number), 1, document.numPages)
     jumpRef.current = { page: target }
     jumpActiveRef.current = true
@@ -429,6 +507,7 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
   }
 
   function changeZoom(next: number) {
+    setGestureVersion((current) => current + 1)
     if (!jumpActiveRef.current) captureAnchor()
     preserveOrClearSelection()
     window.getSelection()?.removeAllRanges()
@@ -473,6 +552,7 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
   function openNote(source?: SelectionDraft) {
     const root = rootRef.current
     if (!root) return
+    setGeometryTool(null)
     setSaveError('')
     retainedSelectionRef.current = null
     setRetryKind(null)
@@ -480,6 +560,23 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
     setNoteDraft(source ? { ...source, top: Math.min(source.top, Math.max(55, root.clientHeight - 270)) }
       : { page, quote: '', rects: [], left: Math.max(8, (root.clientWidth - 360) / 2), top: 60 })
     setSelection(null)
+  }
+
+  function toggleGeometryTool(next: GeometryTool) {
+    if (disabled || savingRef.current || retryKind || noteDraft) return
+    const nextTool = geometryTool === next ? null : next
+    dismissSelection()
+    window.getSelection()?.removeAllRanges()
+    setGestureVersion((current) => current + 1)
+    setGeometryTool(nextTool)
+  }
+
+  function createGeometry(kind: GeometryTool, number: number, rect: LiteratureRect, clientX: number, clientY: number) {
+    if (disabled || savingRef.current || retainedSelectionRef.current || noteDraft) return
+    const root = rootRef.current?.getBoundingClientRect()
+    if (!root) return
+    const source: SelectionDraft = positionSelection({ page: number, quote: '', rects: [rect], issue: '', left: clientX - root.left, top: clientY - root.top - 50 })
+    void saveAnnotation(kind, source)
   }
 
   function colors() {
@@ -492,7 +589,11 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
 
   return <div className="literature-pdf-reader" ref={rootRef}>
     <div className="literature-pdf-toolbar">
-      <div className="literature-pdf-heading"><FileText size={15} /><span>阅读</span><button type="button" disabled={!document || disabled || saving} onClick={() => openNote()}><MessageSquare size={14} /> 页码笔记</button></div>
+      <div className="literature-pdf-heading"><FileText size={15} /><span>阅读</span><button type="button" disabled={!document || disabled || saving} onClick={() => openNote()}><MessageSquare size={14} /> 页码笔记</button>
+        <button type="button" aria-pressed={geometryTool === 'highlight'} disabled={!document || disabled || saving || !!retryKind || !!noteDraft} onClick={() => toggleGeometryTool('highlight')}><Highlighter size={14} /> 框选高亮</button>
+        <button type="button" aria-pressed={geometryTool === 'underline'} disabled={!document || disabled || saving || !!retryKind || !!noteDraft} onClick={() => toggleGeometryTool('underline')}><Underline size={14} /> 拖动划线</button>
+        {geometryTool ? <>{colors()}<button type="button" onClick={() => { setGeometryTool(null); setGestureVersion((current) => current + 1) }} title="退出区域工具（Esc）"><X size={13} /> 退出</button></> : null}
+      </div>
       {document ? <div className="literature-pdf-controls">
         <button type="button" className="literature-pdf-icon-button" disabled={page <= 1} aria-label="上一页" onClick={() => navigate(page - 1)}><ChevronLeft size={15} /></button>
         <input aria-label="跳转到页码" inputMode="numeric" value={pageInput} onChange={(event) => setPageInput(event.target.value.replace(/\D/g, ''))}
@@ -515,13 +616,14 @@ export default function LiteraturePdfReader({ data, annotations, selectedAnnotat
       {loading ? <div className="literature-pdf-state">正在载入 PDF…</div> : null}
       {document && width > 0 ? <div className="literature-pdf-pages">
         {Array.from({ length: document.numPages }, (_, index) => <LiteraturePage key={index + 1} document={document} number={index + 1} width={width} zoom={zoom} fallbackSize={fallbackSize} scrollRef={scrollRef}
-          annotations={byPage.get(index + 1) ?? noAnnotations} selectedAnnotationId={selectedAnnotationId} onSelectAnnotation={onSelectAnnotation} onMeasured={handleMeasured} />)}
+          annotations={byPage.get(index + 1) ?? noAnnotations} selectedAnnotationId={selectedAnnotationId} onSelectAnnotation={onSelectAnnotation} onMeasured={handleMeasured}
+          geometryTool={geometryTool} geometryDisabled={disabled || saving || !!noteDraft || !!retryKind || !!selection} gestureVersion={gestureVersion} activePage={page} color={color} onCreateGeometry={createGeometry} />)}
       </div> : null}
     </div>
     {selection ? <div className="literature-pdf-selection-tools" role="toolbar" aria-label="选区批注" style={{ left: selection.left, top: selection.top, maxHeight: `calc(100% - ${selection.top + 8}px)` }} onMouseDown={(event) => event.preventDefault()}>
       {selection.issue ? <p className="literature-pdf-selection-issue" role="status">{selection.issue}</p> : <>
-        {saving || retryKind ? <div className="literature-pdf-save-status" role="status">第 {selection.page} 页选区 · {saving ? '正在保存…' : '尚未保存'}</div> : null}
-        {retryKind ? <blockquote className="literature-pdf-retry-quote">{selection.quote}</blockquote> : null}
+        {saving || retryKind ? <div className="literature-pdf-save-status" role="status">第 {selection.page} 页{selection.quote ? '选区' : '区域批注'} · {saving ? '正在保存…' : '尚未保存'}</div> : null}
+        {retryKind && selection.quote ? <blockquote className="literature-pdf-retry-quote">{selection.quote}</blockquote> : null}
         <div className="literature-pdf-selection-actions">
           <button type="button" disabled={disabled || saving} onClick={() => void saveAnnotation('highlight', selection)}><Highlighter size={14} /> 高亮</button>
           <button type="button" disabled={disabled || saving} onClick={() => void saveAnnotation('underline', selection)}><Underline size={14} /> 划线</button>
