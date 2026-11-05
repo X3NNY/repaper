@@ -88,7 +88,7 @@ repaper status --json
 
 ### 1. 下载安装应用 (推荐)
 
-当前可下载 [👉 v0.1.1](https://github.com/X3NNY/repaper/releases/tag/v0.1.1)，或前往 [全部 Releases](https://github.com/X3NNY/repaper/releases) 查看其他版本。请按系统和 CPU 架构选择安装包，也可以使用下方源码启动方式。
+当前可下载 [👉 最新版本](https://github.com/X3NNY/repaper/releases/latest)，或前往 [全部 Releases](https://github.com/X3NNY/repaper/releases) 查看其他版本。请按系统和 CPU 架构选择安装包，也可以使用下方源码启动方式。
 
 | 操作系统 | 下载文件 | 说明 |
 | --- | --- | --- |
