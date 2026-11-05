@@ -29,7 +29,7 @@ assert.deepEqual(found, names, 'All twelve expected installers/archives must exi
 const sums = names.map(name => `${createHash('sha256').update(readFileSync(join(directory, name))).digest('hex')}  ${name}`)
 writeFileSync(join(directory, 'SHA256SUMS.txt'), `${sums.join('\n')}\n`)
 
-async function gh(args, allowFailure = false) {
+async function gh(args) {
   for (let attempt = 0; ; attempt++) {
     const result = spawnSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     if (result.error) throw result.error
@@ -40,22 +40,28 @@ async function gh(args, allowFailure = false) {
       await delay(wait)
       continue
     }
-    if (result.status !== 0 && !allowFailure) throw new Error(message)
+    if (result.status !== 0) throw new Error(message)
     return result
   }
 }
 
 const repository = process.env.GH_REPO || 'X3NNY/repaper'
 assert.match(repository, /^[\w.-]+\/[\w.-]+$/)
+let releaseId = null
 
 async function readDraft(allowMissing = false) {
-  const result = await gh(['api', `repos/${repository}/releases/tags/${tag}`], allowMissing)
-  if (result.status !== 0) {
-    assert.match(result.stderr || result.stdout, /HTTP 404/, 'Could not confirm whether the release already exists')
+  // The tag endpoint can omit drafts; discover the draft through the release list.
+  const args = releaseId ? ['api', `repos/${repository}/releases/${releaseId}`]
+    : ['api', '--paginate', `repos/${repository}/releases?per_page=100`, '--jq', `.[] | select(.tag_name == ${JSON.stringify(tag)})`]
+  const result = await gh(args)
+  if (!result.stdout.trim()) {
+    assert.equal(allowMissing, true, 'The release draft disappeared during upload')
     return null
   }
   const release = JSON.parse(result.stdout)
+  assert.equal(release.tag_name, tag, 'Release draft tag does not match the requested version')
   assert.equal(release.draft, true, 'Refusing to replace assets of an already published release')
+  releaseId = release.id
   return release
 }
 async function main() {
